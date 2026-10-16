@@ -86,18 +86,17 @@ if(Fcitx5Core_FOUND AND Fcitx5Config_FOUND)
     # size to BOTH apps/ and status/: the tray/status area looks icons
     # up in the status context (Ngó Sen does the same).
     foreach(_size 22 24 48 256)
-        install(FILES "data/icons/fcitx-tuigo-vi-${_size}.png"
-                RENAME fcitx-tuigo-vi.png
+        foreach(_mode vi en)
+            set(_icon "${CMAKE_CURRENT_SOURCE_DIR}/data/icons/fcitx-tuigo-${_mode}-${_size}.png")
+            if(EXISTS "${_icon}")
+            install(FILES "${_icon}"
+                RENAME "fcitx-tuigo-${_mode}.png"
                 DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/${_size}x${_size}/apps")
-        install(FILES "data/icons/fcitx-tuigo-vi-${_size}.png"
-                RENAME fcitx-tuigo-vi.png
+            install(FILES "${_icon}"
+                RENAME "fcitx-tuigo-${_mode}.png"
                 DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/${_size}x${_size}/status")
-        install(FILES "data/icons/fcitx-tuigo-en-${_size}.png"
-                RENAME fcitx-tuigo-en.png
-                DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/${_size}x${_size}/apps")
-        install(FILES "data/icons/fcitx-tuigo-en-${_size}.png"
-                RENAME fcitx-tuigo-en.png
-                DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/${_size}x${_size}/status")
+            endif()
+        endforeach()
     endforeach()
 else()
     message(STATUS "Fcitx5 dev files not found: skipping addon target (sen_test still builds)")

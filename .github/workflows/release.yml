@@ -116,37 +116,6 @@ jobs:
             app/tuigo-updater-arm64.exe
           if-no-files-found: error
 
-  desktop-linux:
-    needs: validate
-    if: ${{ github.event.inputs.platform == 'desktop' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.validate.outputs.ref }}
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: linux/go.mod
-          cache-dependency-path: |
-            linux/go.sum
-            linux/settings/go.sum
-      - name: Dependencies (IBus + Fyne GL + headless session)
-        run: >-
-          sudo apt-get update -qq && sudo apt-get install -y -qq
-          ibus gir1.2-ibus-1.0 python3-gi dbus-x11 xvfb
-          libgl1-mesa-dev xorg-dev pkg-config
-      - name: Test + build + e2e
-        run: sh scripts/check-linux.sh
-      - name: Package tarball
-        run: |
-          mkdir -p dist
-          tar -czf dist/tuigo-linux-x86_64.tar.gz -C linux dist data install.sh uninstall.sh
-      - uses: actions/upload-artifact@v4
-        with:
-          name: desktop-linux
-          path: dist/tuigo-linux-x86_64.tar.gz
-          if-no-files-found: error
-
   desktop-fcitx5:
     needs: validate
     if: ${{ github.event.inputs.platform == 'desktop' }}
@@ -177,7 +146,7 @@ jobs:
           if-no-files-found: error
 
   desktop-release:
-    needs: [validate, desktop-windows, desktop-linux, desktop-fcitx5]
+    needs: [validate, desktop-windows, desktop-fcitx5]
     if: ${{ github.event.inputs.platform == 'desktop' }}
     runs-on: ubuntu-latest
     steps:
@@ -190,7 +159,6 @@ jobs:
         run: |
           test -s dist/tuigo-x64.zip
           test -s dist/tuigo-arm64.zip
-          test -s dist/tuigo-linux-x86_64.tar.gz
           compgen -G 'dist/*.deb' > /dev/null
           compgen -G 'dist/*.rpm' > /dev/null
       - uses: softprops/action-gh-release@v2
