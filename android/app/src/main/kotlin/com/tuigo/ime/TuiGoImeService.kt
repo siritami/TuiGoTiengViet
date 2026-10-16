@@ -20,7 +20,6 @@ import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.content.SharedPreferences
 import android.util.Size
-import android.util.Log
 import android.util.TypedValue
 import android.view.WindowInsetsController
 import com.tuigo.UiTheme
@@ -43,7 +42,6 @@ import android.widget.LinearLayout
 import android.widget.PopupWindow
 import android.widget.ScrollView
 import android.widget.TextView
-import android.widget.Toast
 import android.widget.inline.InlineContentView
 import android.widget.inline.InlinePresentationSpec
 import androidx.autofill.inline.UiVersions
@@ -114,36 +112,6 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
     private var inlineGeneration = 0
     private var hasInlineSuggestions = false
     private val mainHandler = Handler(Looper.getMainLooper())
-    private var inlineRequestSequence = 0
-    private var inlineResponseSequence = 0
-    private var inlineDebugToast: Toast? = null
-
-    private fun inlineDebugToast(message: String) {
-        mainHandler.post {
-            inlineDebugToast?.cancel()
-            inlineDebugToast = Toast.makeText(this, "TuiGo inline: $message", Toast.LENGTH_LONG).also {
-                it.show()
-            }
-        }
-    }
-
-    private fun inlineLog(event: String, details: String = "") {
-        val message = "event=$event generation=$inlineGeneration request=$inlineRequestSequence" +
-            if (details.isEmpty()) "" else " $details"
-        Log.e("TuiGoInline", message)
-        System.err.println("TuiGoInline $message")
-        try {
-            val debugFile = java.io.File(filesDir, "inline-debug.log")
-            if (debugFile.length() > 512 * 1024) {
-                debugFile.writeText("")
-            }
-            debugFile.appendText("${System.currentTimeMillis()} $message\n")
-        } catch (_: Exception) { }
-    }
-
-    private fun View.inlineGeometry(): String =
-        "view=${System.identityHashCode(this)} measured=${measuredWidth}x${measuredHeight}" +
-            " size=${width}x${height} pos=$left,$top,$right,$bottom visibility=$visibility"
 
     private var clipboardManager: ClipboardManager? = null
     private var clipCopiedAtMs = 0L
@@ -193,18 +161,6 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
 
     override fun onCreate() {
         super.onCreate()
-        val packageInfo = packageManager.getPackageInfo(packageName, 0)
-        @Suppress("DEPRECATION")
-        val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            packageInfo.longVersionCode
-        } else {
-            packageInfo.versionCode.toLong()
-        }
-        inlineLog(
-            "service-created",
-            "version=${packageInfo.versionName} code=$versionCode" +
-                " sdk=${Build.VERSION.SDK_INT} process=${android.os.Process.myPid()}",
-        )
         engine = Engine()
         loadEngineConfig()
         Prefs.get(this).registerOnSharedPreferenceChangeListener(preferenceListener)
@@ -213,7 +169,6 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
     }
 
     override fun onDestroy() {
-        inlineLog("service-destroyed")
         clipboardManager?.removePrimaryClipChangedListener(clipChangedListener)
         Prefs.get(this).unregisterOnSharedPreferenceChangeListener(preferenceListener)
         super.onDestroy()
@@ -271,13 +226,6 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
             visibility = View.GONE
             setBackgroundColor(keyboard.theme.bg)
             addView(strip, ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-            setOnScrollChangeListener { view, scrollX, scrollY, oldScrollX, oldScrollY ->
-                inlineLog(
-                    "scroll-change",
-                    "view=${System.identityHashCode(view)} from=$oldScrollX,$oldScrollY" +
-                        " to=$scrollX,$scrollY childWidth=${getChildAt(0)?.width ?: 0} viewport=$width",
-                )
-            }
         }
         suggestionStrip = strip
         suggestionScroll = scroll
@@ -287,20 +235,6 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         suggestionSurface = surface
         val pinnedHost = android.widget.FrameLayout(this)
         pinnedSuggestionHost = pinnedHost
-        scroll.addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
-            val child = (view as HorizontalScrollView).getChildAt(0)
-            inlineLog(
-                "scroll-layout",
-                "${view.inlineGeometry()} child=${child?.inlineGeometry()} scrollX=${view.scrollX}" +
-                    " contentWidth=${child?.width ?: 0} viewportWidth=${view.width}",
-            )
-        }
-        surface.addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
-            inlineLog("surface-layout", view.inlineGeometry())
-        }
-        pinnedHost.addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
-            inlineLog("pinned-layout", view.inlineGeometry())
-        }
         // Fixed row height (40dp) matching Fcitx inline suggestion bar.
         val stripH = (40 * dm).toInt()
         return LinearLayout(this).apply {
@@ -336,16 +270,11 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
 
     override fun onStartInput(info: EditorInfo?, restarting: Boolean) {
         super.onStartInput(info, restarting)
-        inlineLog(
-            "start-input",
-            "restarting=$restarting package=${info?.packageName} field=${info?.fieldId} inputType=${info?.inputType}",
-        )
         clearInlineSuggestions()
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
-        inlineLog("start-input-view", "restarting=$restarting package=${info?.packageName} field=${info?.fieldId}")
         hostPkg = info?.packageName
         loadEngineConfig()
         keyboard.theme = KeyboardThemes.current(this)
@@ -388,7 +317,6 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
 
     override fun onFinishInputView(finishingInput: Boolean) {
         super.onFinishInputView(finishingInput)
-        inlineLog("finish-input-view", "finishing=$finishingInput")
         clearInlineSuggestions()
         clipPanel?.dismiss()
         spacePopup?.dismiss()
@@ -637,17 +565,8 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
     // although Google's own inline-suggestion docs use them — pinned dep, safe.
     @SuppressLint("NewApi", "RestrictedApi") // override is only invoked on API 30+
     override fun onCreateInlineSuggestionsRequest(uiExtras: Bundle): InlineSuggestionsRequest? {
-        inlineRequestSequence++
         val versions = UiVersions.getVersions(uiExtras)
-        inlineLog(
-            "request-create",
-            "versions=$versions density=${resources.displayMetrics.density}" +
-                " display=${resources.displayMetrics.widthPixels}x${resources.displayMetrics.heightPixels}",
-        )
-        if (!versions.contains(UiVersions.INLINE_UI_VERSION_1)) {
-            inlineLog("request-rejected", "reason=unsupported-version")
-            return null
-        }
+        if (!versions.contains(UiVersions.INLINE_UI_VERSION_1)) return null
         val dm = resources.displayMetrics.density
         val t = KeyboardThemes.current(this)
         val chipDrawable = if (UiTheme.isDark(this)) {
@@ -698,57 +617,32 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
             .build()
         val request = InlineSuggestionsRequest.Builder(listOf(spec))
             .setMaxSuggestionCount(InlineSuggestionsRequest.SUGGESTION_COUNT_UNLIMITED)
-        return request.build().also {
-            inlineLog(
-                "request-ready",
-                "specs=${it.inlinePresentationSpecs.size} max=${it.maxSuggestionCount}" +
-                    " min=${spec.minSize} maxSize=${spec.maxSize}",
-            )
-        }
+        return request.build()
     }
 
     @SuppressLint("NewApi")
     override fun onInlineSuggestionsResponse(response: InlineSuggestionsResponse): Boolean {
-        val responseId = ++inlineResponseSequence
         val suggestions = response.inlineSuggestions
-        inlineDebugToast(
-            "response #$responseId = ${suggestions.size}, pinned = ${suggestions.count { it.info.isPinned }}",
-        )
-        inlineLog(
-            "response",
-            "response=$responseId count=${suggestions.size} pinned=${suggestions.count { it.info.isPinned }}" +
-                " items=${suggestions.mapIndexed { index, item -> "$index:${System.identityHashCode(item)}:${item.info.isPinned}" }}",
-        )
         if (suggestions.isEmpty()) {
             clearInlineSuggestions()
             renderSuggestionStrip()
         } else {
             val generation = inlineGeneration
-            showInlineSuggestions(suggestions, generation, responseId)
+            showInlineSuggestions(suggestions, generation)
         }
         return true
     }
 
     @SuppressLint("NewApi")
     private fun clearInlineSuggestions() {
-        inlineLog(
-            "clear-start",
-            "attached=${scrollableInlineViews.size} scrollChildren=${suggestionScroll?.childCount ?: -1}" +
-                " pinnedChildren=${pinnedSuggestionHost?.childCount ?: -1}",
-        )
         inlineGeneration++
         hasInlineSuggestions = false
         val scroll = suggestionScroll
         scroll?.scrollTo(0, 0)
         scroll?.removeAllViews()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            scrollableInlineViews.forEachIndexed { index, view ->
+            scrollableInlineViews.forEach { view ->
                 view.surfaceControl?.let { surfaceControl ->
-                    inlineLog(
-                        "surface-detach",
-                        "index=$index view=${System.identityHashCode(view)}" +
-                            " surface=${System.identityHashCode(surfaceControl)} valid=${surfaceControl.isValid}",
-                    )
                     SurfaceControl.Transaction().reparent(surfaceControl, null).apply()
                 }
             }
@@ -760,7 +654,6 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         renderedClipKey = null
         renderedHistoryOn = false
         renderedTheme = null
-        inlineLog("clear-complete")
     }
 
     private data class ClipCandidate(
@@ -1213,12 +1106,8 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
     private fun showInlineSuggestions(
         suggestions: List<InlineSuggestion>,
         generation: Int,
-        responseId: Int,
     ) {
-        if (generation != inlineGeneration) {
-            inlineLog("response-stale", "response=$responseId expected=$generation actual=$inlineGeneration")
-            return
-        }
+        if (generation != inlineGeneration) return
         hasInlineSuggestions = true
 
         if (suggestions.isEmpty()) {
@@ -1241,22 +1130,10 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
                 scrollable.add(it)
             }
         }
-        inlineLog(
-            "partition",
-            "response=$responseId total=${suggestions.size} pinned=${if (pinned == null) 0 else 1}" +
-                " scrollable=${scrollable.size} extraPinned=$extraPinnedCount",
-        )
-        inlineDebugToast(
-            "response #$responseId: pinned=${if (pinned == null) 0 else 1}, scrollable=${scrollable.size}",
-        )
-
         if (pinned != null) {
-            inflateInlineSuggestion(pinned, responseId, -1) { view ->
+            inflateInlineSuggestion(pinned) { view ->
                 mainHandler.post {
-                    if (generation != inlineGeneration) {
-                        inlineLog("pinned-stale", "response=$responseId")
-                        return@post
-                    }
+                    if (generation != inlineGeneration) return@post
                     setPinnedInlineView(view, generation)
                 }
             }
@@ -1272,30 +1149,14 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         val count = scrollable.size
         val views = MutableList<InlineContentView?>(count) { null }
         var completed = 0
-        val startedAt = SystemClock.uptimeMillis()
 
         scrollable.forEachIndexed { index, suggestion ->
-            inflateInlineSuggestion(suggestion, responseId, index) { view ->
+            inflateInlineSuggestion(suggestion) { view ->
                 mainHandler.post {
-                    if (generation != inlineGeneration) {
-                        inlineLog("inflate-stale", "response=$responseId index=$index")
-                        return@post
-                    }
+                    if (generation != inlineGeneration) return@post
                     views[index] = view
                     completed++
-                    inlineLog(
-                        "batch-progress",
-                        "response=$responseId completed=$completed/$count index=$index nonNull=${view != null}",
-                    )
                     if (completed == count) {
-                        inlineDebugToast(
-                            "response #$responseId: inflated=${views.count { it != null }}/$count",
-                        )
-                        inlineLog(
-                            "batch-complete",
-                            "response=$responseId count=$count nonNull=${views.count { it != null }}" +
-                                " elapsed=${SystemClock.uptimeMillis() - startedAt}ms",
-                        )
                         setScrollableInlineViews(views, generation)
                     }
                 }
@@ -1306,16 +1167,8 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
     @SuppressLint("NewApi")
     private fun inflateInlineSuggestion(
         suggestion: InlineSuggestion,
-        responseId: Int,
-        index: Int,
         onInflated: (InlineContentView?) -> Unit,
     ) {
-        val suggestionId = System.identityHashCode(suggestion)
-        val startedAt = SystemClock.uptimeMillis()
-        inlineLog(
-            "inflate-start",
-            "response=$responseId index=$index suggestion=$suggestionId pinned=${suggestion.info.isPinned}",
-        )
         try {
             suggestion.inflate(
                 this,
@@ -1324,20 +1177,9 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
                     (40 * resources.displayMetrics.density).toInt(),
                 ),
                 inlineExecutor,
-            ) { view ->
-                inlineLog(
-                    "inflate-callback",
-                    "response=$responseId index=$index suggestion=$suggestionId nonNull=${view != null}" +
-                        " elapsed=${SystemClock.uptimeMillis() - startedAt}ms geometry=${view?.inlineGeometry()}",
-                )
-                onInflated(view)
-            }
-        } catch (error: Exception) {
-            inlineLog(
-                "inflate-exception",
-                "response=$responseId index=$index suggestion=$suggestionId" +
-                    " type=${error.javaClass.name} message=${error.message}",
+                onInflated,
             )
+        } catch (_: Exception) {
             onInflated(null)
         }
     }
@@ -1347,25 +1189,9 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         views: List<InlineContentView?>,
         generation: Int,
     ) {
-        if (generation != inlineGeneration) {
-            inlineLog("attach-rejected", "reason=stale expected=$generation actual=$inlineGeneration")
-            return
-        }
-        val scroll = suggestionScroll
-        if (scroll == null) {
-            inlineLog("attach-rejected", "reason=no-scroll")
-            return
-        }
-        val surface = suggestionSurface
-        if (surface == null) {
-            inlineLog("attach-rejected", "reason=no-surface")
-            return
-        }
-        inlineLog(
-            "attach-start",
-            "views=${views.size} nonNull=${views.count { it != null }}" +
-                " scroll=${scroll.inlineGeometry()} surface=${surface.inlineGeometry()}",
-        )
+        if (generation != inlineGeneration) return
+        val scroll = suggestionScroll ?: return
+        val surface = suggestionSurface ?: return
 
         scroll.scrollTo(0, 0)
         scroll.removeAllViews()
@@ -1380,32 +1206,18 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
             flexWrap = FlexWrap.NOWRAP
             justifyContent = JustifyContent.CENTER
         }
-        views.forEachIndexed { index, view ->
-            if (view == null) return@forEachIndexed
+        views.forEach { view ->
+            if (view == null) return@forEach
             scrollableInlineViews += view
             view.setSurfaceControlCallback(object : InlineContentView.SurfaceControlCallback {
                 override fun onCreated(surfaceControl: SurfaceControl) {
-                    val parent = surface.surfaceControl
-                    if (parent == null) {
-                        inlineLog("surface-reparent-rejected", "index=$index reason=no-parent-surface")
-                        return
-                    }
-                    inlineLog(
-                        "surface-created",
-                        "index=$index view=${System.identityHashCode(view)} surface=${System.identityHashCode(surfaceControl)}" +
-                            " parent=${System.identityHashCode(parent)} valid=${surfaceControl.isValid} parentValid=${parent.isValid}",
-                    )
+                    val parent = surface.surfaceControl ?: return
                     SurfaceControl.Transaction()
                         .reparent(surfaceControl, parent)
                         .apply()
                 }
 
-                override fun onDestroyed(surfaceControl: SurfaceControl) {
-                    inlineLog(
-                        "surface-destroyed",
-                        "index=$index view=${System.identityHashCode(view)} surface=${System.identityHashCode(surfaceControl)}",
-                    )
-                }
+                override fun onDestroyed(surfaceControl: SurfaceControl) = Unit
             })
             flexbox.addView(view)
             view.layoutParams = (view.layoutParams as? FlexboxLayout.LayoutParams
@@ -1413,38 +1225,20 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.MATCH_PARENT,
                 )).apply { flexShrink = 0f }
-            inlineLog("child-added", "index=$index ${view.inlineGeometry()} flexShrink=0")
         }
         suggestionStrip = flexbox
         scroll.addView(flexbox, ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT,
             ViewGroup.LayoutParams.MATCH_PARENT,
         ))
-        inlineLog("attached", "children=${flexbox.childCount} ${flexbox.inlineGeometry()}")
-        inlineDebugToast("attached=${flexbox.childCount}, requested=${views.size}")
-        flexbox.post {
-            inlineLog(
-                "attached-post-layout",
-                "children=${flexbox.childCount} ${flexbox.inlineGeometry()}" +
-                    " childGeometry=${(0 until flexbox.childCount).map { flexbox.getChildAt(it).inlineGeometry() }}" +
-                    " scroll=${scroll.inlineGeometry()} scrollX=${scroll.scrollX}",
-            )
-        }
         activeClipCandidate = null
         scroll.visibility = View.VISIBLE
     }
 
     @SuppressLint("NewApi")
     private fun setPinnedInlineView(view: InlineContentView?, generation: Int) {
-        if (generation != inlineGeneration) {
-            inlineLog("pinned-rejected", "reason=stale expected=$generation actual=$inlineGeneration")
-            return
-        }
-        val host = pinnedSuggestionHost
-        if (host == null) {
-            inlineLog("pinned-rejected", "reason=no-host")
-            return
-        }
+        if (generation != inlineGeneration) return
+        val host = pinnedSuggestionHost ?: return
         host.removeAllViews()
         if (view != null) {
             host.addView(view)
@@ -1457,12 +1251,6 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
                 leftMargin = margin
                 rightMargin = margin
             }
-            inlineLog("pinned-attached", view.inlineGeometry())
-            view.post {
-                inlineLog("pinned-post-layout", "${view.inlineGeometry()} host=${host.inlineGeometry()}")
-            }
-        } else {
-            inlineLog("pinned-cleared")
         }
     }
 
