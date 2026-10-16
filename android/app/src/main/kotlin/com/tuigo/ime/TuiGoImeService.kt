@@ -43,6 +43,7 @@ import android.widget.LinearLayout
 import android.widget.PopupWindow
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import android.widget.inline.InlineContentView
 import android.widget.inline.InlinePresentationSpec
 import androidx.autofill.inline.UiVersions
@@ -115,6 +116,16 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var inlineRequestSequence = 0
     private var inlineResponseSequence = 0
+    private var inlineDebugToast: Toast? = null
+
+    private fun inlineDebugToast(message: String) {
+        mainHandler.post {
+            inlineDebugToast?.cancel()
+            inlineDebugToast = Toast.makeText(this, "TuiGo inline: $message", Toast.LENGTH_LONG).also {
+                it.show()
+            }
+        }
+    }
 
     private fun inlineLog(event: String, details: String = "") {
         val message = "event=$event generation=$inlineGeneration request=$inlineRequestSequence" +
@@ -693,6 +704,9 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
     override fun onInlineSuggestionsResponse(response: InlineSuggestionsResponse): Boolean {
         val responseId = ++inlineResponseSequence
         val suggestions = response.inlineSuggestions
+        inlineDebugToast(
+            "response #$responseId = ${suggestions.size}, pinned = ${suggestions.count { it.info.isPinned }}",
+        )
         inlineLog(
             "response",
             "response=$responseId count=${suggestions.size} pinned=${suggestions.count { it.info.isPinned }}" +
@@ -1225,6 +1239,9 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
             "response=$responseId total=${suggestions.size} pinned=${if (pinned == null) 0 else 1}" +
                 " scrollable=${scrollable.size} extraPinned=$extraPinnedCount",
         )
+        inlineDebugToast(
+            "response #$responseId: pinned=${if (pinned == null) 0 else 1}, scrollable=${scrollable.size}",
+        )
 
         if (pinned != null) {
             inflateInlineSuggestion(pinned, responseId, -1) { view ->
@@ -1264,6 +1281,9 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
                         "response=$responseId completed=$completed/$count index=$index nonNull=${view != null}",
                     )
                     if (completed == count) {
+                        inlineDebugToast(
+                            "response #$responseId: inflated=${views.count { it != null }}/$count",
+                        )
                         inlineLog(
                             "batch-complete",
                             "response=$responseId count=$count nonNull=${views.count { it != null }}" +
@@ -1394,6 +1414,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
             ViewGroup.LayoutParams.MATCH_PARENT,
         ))
         inlineLog("attached", "children=${flexbox.childCount} ${flexbox.inlineGeometry()}")
+        inlineDebugToast("attached=${flexbox.childCount}, requested=${views.size}")
         flexbox.post {
             inlineLog(
                 "attached-post-layout",
