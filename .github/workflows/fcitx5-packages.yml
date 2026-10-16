@@ -1,0 +1,116 @@
+name: fcitx5 packages
+
+# Build .deb (for Ubuntu/Debian) + .rpm (for Fedora/RHEL) for the fcitx5
+# addon via CPack. One Ubuntu build emits both: the addon .so links the
+# same fcitx5 SONAMEs on every distro.
+# Manual only on upstream (save Actions minutes); on forks a push builds
+# automatically so contributors can verify their own copy. Same guard as
+# linux.yml. Dispatch with release=true to attach the packages to a
+# GitHub release for the tag.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (vX.Y.Z); empty = stamp with the app version'
+        required: false
+      release:
+        description: 'Attach the packages to a GitHub release for the tag'
+        type: boolean
+        default: false
+  push:
+    paths:
+      - 'fcitx5/**'
+      - '.github/workflows/fcitx5-packages.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    # Same upstream guard as linux.yml: push builds only on forks.
+    if: github.event_name != 'push' || github.repository != 'captajn/TuiGoTiengViet'
+    runs-on: ubuntu-latest
+    outputs:
+      ref: ${{ steps.check.outputs.ref }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Validate tag + resolve version
+        id: check
+        run: |
+          tag='${{ github.event.inputs.tag }}'
+          if [ -n "$tag" ]; then
+            case "$tag" in
+              mobile-v*) echo "::error::fcitx5 packages take a vX.Y.Z tag, not a mobile tag (got '$tag')."; exit 1;;
+              v*) ;;
+              *) echo "::error::fcitx5 packages take a vX.Y.Z tag (got '$tag')."; exit 1;;
+            esac
+            version="${tag#v}"
+          else
+            version="$(sed -n 's/.*appVersion = "\([0-9]*\.[0-9]*\.[0-9]*\)".*/\1/p' app/main.go | head -n 1)"
+            [ -n "$version" ] || { echo "::error::could not parse appVersion from app/main.go"; exit 1; }
+          fi
+          if [ '${{ github.event.inputs.release }}' = 'true' ] && [ -z "$tag" ]; then
+            echo "::error::release=true needs a tag input."; exit 1
+          fi
+          echo "ref=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "OK: version=$version tag=${tag:-<app version>} release=${{ github.event.inputs.release }}"
+
+  packages:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.ref }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: fcitx5/go/go.mod
+      - name: Dependencies
+        # rpm (rpmbuild) lets the same Ubuntu build emit the .rpm too:
+        # the addon .so links the same fcitx5 SONAMEs on every distro,
+        # so the RPM from this build is identical to a Fedora-built one.
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq cmake g++ pkg-config rpm libfcitx5core-dev libfcitx5config-dev
+      - name: Build + test
+        run: |
+          cmake -S fcitx5 -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DTUIGO_VERSION='${{ needs.validate.outputs.version }}'
+          cmake --build build -j
+          ctest --test-dir build --output-on-failure
+      - name: Package .deb + .rpm
+        run: |
+          cd build && cpack -G DEB && cpack -G RPM
+          ls -la *.deb *.rpm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fcitx5-tuigo-deb
+          path: build/*.deb
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fcitx5-tuigo-rpm
+          path: build/*.rpm
+          if-no-files-found: error
+
+  release:
+    needs: [packages]
+    if: github.event.inputs.release == 'true'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: fcitx5-tuigo-*
+          merge-multiple: true
+          path: dist
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag }}
+          name: Tui Gõ ${{ github.event.inputs.tag }} (fcitx5)
+          draft: false
+          generate_release_notes: true
+          files: dist/*
