@@ -85,6 +85,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
                 keyboard.setMetrics(Prefs.keyHeightDp(this), Prefs.keyGapDp(this))
                 suggestionScroll?.setBackgroundColor(keyboard.theme.bg)
                 renderSuggestionStrip()
+                updateAutoCapitalization()
                 applySystemBarTheme()
             }
         }
@@ -292,6 +293,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         expectedSel = if (selStart >= 0 && selEnd >= 0) minOf(selStart, selEnd) else selEnd
         if (expectedSel >= 0) ownSelEchoes.add(expectedSel)
         spacePending = false
+        updateAutoCapitalization()
         applySystemBarTheme()
     }
 
@@ -359,6 +361,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
                 expectedSel = newSelStart
             }
         }
+        updateAutoCapitalization()
     }
 
     // ---- keyboard events -----------------------------------------------------
@@ -388,6 +391,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
             ic.commitText(ch.toString(), 1)
             bumpExpected(1)
             spacePending = false
+            scheduleAutoCapitalizationUpdate()
             return
         }
 
@@ -407,6 +411,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
                 expectEcho(expectedSel)
             }
             engine.resetBuf()
+            scheduleAutoCapitalizationUpdate()
             return
         }
 
@@ -416,6 +421,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
             bumpExpected(1)
             spacePending = ch == ' '
             if (spacePending) spaceAt = SystemClock.uptimeMillis()
+            scheduleAutoCapitalizationUpdate()
             return
         }
 
@@ -430,6 +436,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         }
         spacePending = ch == ' '
         if (spacePending) spaceAt = SystemClock.uptimeMillis()
+        scheduleAutoCapitalizationUpdate()
     }
 
     override fun onDelete() {
@@ -451,6 +458,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
                 selEnd = anchor
                 expectEcho(anchor)
             }
+            scheduleAutoCapitalizationUpdate()
             return
         }
         val res = engine.backspace()
@@ -460,6 +468,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
             ic.deleteSurroundingText(1, 0)
             bumpExpected(-1)
         }
+        scheduleAutoCapitalizationUpdate()
     }
 
     override fun onEnter() {
@@ -469,11 +478,26 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         if (!sendDefaultEditorAction(true)) {
             sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
         }
+        scheduleAutoCapitalizationUpdate()
     }
 
     override fun onShiftChanged(shifted: Boolean, capsLock: Boolean) {
         engine.shiftPressed = shifted
         engine.capsLockOn = capsLock
+    }
+
+    private fun scheduleAutoCapitalizationUpdate() {
+        mainHandler.post { updateAutoCapitalization() }
+    }
+
+    private fun updateAutoCapitalization() {
+        if (!::keyboard.isInitialized || keyboard.capsLock) return
+        val info = currentInputEditorInfo
+        val enabled = Prefs.autoCapitalize(this) && !isRestrictedField(info)
+        val shouldShift = enabled && currentInputConnection
+            ?.getCursorCapsMode(TextUtils.CAP_MODE_SENTENCES)
+            ?.and(TextUtils.CAP_MODE_SENTENCES) != 0
+        keyboard.setAutoShifted(shouldShift)
     }
 
     override fun onVietToggle() {
