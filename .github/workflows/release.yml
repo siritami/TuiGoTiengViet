@@ -187,7 +187,9 @@ jobs:
           args=""
           [ -n "$RELEASE_TAG" ] && args="--tag $RELEASE_TAG"
           echo "TAGARG=$args" >> "$GITHUB_ENV"
-          python3 -P scripts/mobile-release.py metadata $args
+          metadata=$(python3 -P scripts/mobile-release.py metadata $args)
+          echo "$metadata"
+          echo "TUIGO_VERSION=$(printf '%s' "$metadata" | python3 -c 'import json, sys; print(json.load(sys.stdin)["version"])')" >> "$GITHUB_ENV"
           python3 -P scripts/check-palette.py
       - uses: actions/setup-java@v4
         with:
@@ -215,9 +217,9 @@ jobs:
         run: |
           chmod +x gradlew
           if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
-            ./gradlew :engine:test :app:assembleRelease :app:lintRelease --console=plain
+            ./gradlew -PtuigoVersion="$TUIGO_VERSION" :engine:test :app:assembleRelease :app:lintRelease --console=plain
           else
-            ./gradlew :engine:test :app:assembleDebug :app:lintDebug --console=plain
+            ./gradlew -PtuigoVersion="$TUIGO_VERSION" :engine:test :app:assembleDebug :app:lintDebug --console=plain
           fi
       - name: Package exact APK variant
         run: |
@@ -254,13 +256,17 @@ jobs:
           args=""
           [ -n "$RELEASE_TAG" ] && args="--tag $RELEASE_TAG"
           echo "TAGARG=$args" >> "$GITHUB_ENV"
-          python3 -P scripts/mobile-release.py metadata $args
+          metadata=$(python3 -P scripts/mobile-release.py metadata $args)
+          echo "$metadata"
+          echo "TUIGO_VERSION=$(printf '%s' "$metadata" | python3 -c 'import json, sys; print(json.load(sys.stdin)["version"])')" >> "$GITHUB_ENV"
       - name: Verify palette, engine and simulator build
         run: |
           brew install xcodegen
-          sh scripts/check-ios.sh
+          TUIGO_VERSION="$TUIGO_VERSION" sh scripts/check-ios.sh
       - name: Build app + keyboard extension (unsigned, device)
         working-directory: ios
+        env:
+          TUIGO_VERSION: ${{ env.TUIGO_VERSION }}
         run: >-
           xcodebuild -project TuiGo.xcodeproj -scheme TuiGo
           -destination 'generic/platform=iOS' -configuration Release
