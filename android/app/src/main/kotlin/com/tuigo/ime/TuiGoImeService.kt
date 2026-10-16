@@ -1205,6 +1205,18 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         val flexbox = FlexboxLayout(this).apply {
             flexWrap = FlexWrap.NOWRAP
             justifyContent = JustifyContent.CENTER
+            alignItems = com.google.android.flexbox.AlignItems.CENTER
+        }
+        if (Prefs.clipboardHistory(this) && ClipboardHistory.hasEntries(this)) {
+            val historyChip = buildHistoryChip()
+            historyChip.layoutParams = FlexboxLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                flexShrink = 0f
+                marginEnd = (6 * resources.displayMetrics.density).toInt()
+            }
+            flexbox.addView(historyChip)
         }
         views.forEach { view ->
             if (view == null) return@forEach
