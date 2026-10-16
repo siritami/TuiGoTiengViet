@@ -494,9 +494,12 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         if (!::keyboard.isInitialized || keyboard.capsLock) return
         val info = currentInputEditorInfo
         val enabled = Prefs.autoCapitalize(this) && !isRestrictedField(info)
-        val shouldShift = enabled && currentInputConnection
-            ?.getCursorCapsMode(TextUtils.CAP_MODE_SENTENCES)
-            ?.and(TextUtils.CAP_MODE_SENTENCES) != 0
+        val ic = currentInputConnection
+        val capsMode = ic?.getCursorCapsMode(TextUtils.CAP_MODE_SENTENCES) ?: 0
+        val textBeforeCursor = ic?.getTextBeforeCursor(2, 0)?.toString().orEmpty()
+        val atTextOrLineStart = textBeforeCursor.isEmpty() || textBeforeCursor.endsWith('\n')
+        val shouldShift = enabled &&
+            (capsMode and TextUtils.CAP_MODE_SENTENCES != 0 || atTextOrLineStart)
         keyboard.setAutoShifted(shouldShift)
     }
 
