@@ -193,9 +193,10 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
 
     override fun onCreate() {
         super.onCreate()
+        val packageInfo = packageManager.getPackageInfo(packageName, 0)
         inlineLog(
             "service-created",
-            "version=${BuildConfig.VERSION_NAME} code=${BuildConfig.VERSION_CODE}" +
+            "version=${packageInfo.versionName} code=${packageInfo.longVersionCode}" +
                 " sdk=${Build.VERSION.SDK_INT} process=${android.os.Process.myPid()}",
         )
         engine = Engine()
@@ -1374,7 +1375,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
             justifyContent = JustifyContent.CENTER
         }
         views.forEachIndexed { index, view ->
-            if (view == null) return@forEach
+            if (view == null) return@forEachIndexed
             scrollableInlineViews += view
             view.setSurfaceControlCallback(object : InlineContentView.SurfaceControlCallback {
                 override fun onCreated(surfaceControl: SurfaceControl) {
