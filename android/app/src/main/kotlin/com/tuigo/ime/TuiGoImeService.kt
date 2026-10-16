@@ -194,9 +194,15 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
     override fun onCreate() {
         super.onCreate()
         val packageInfo = packageManager.getPackageInfo(packageName, 0)
+        @Suppress("DEPRECATION")
+        val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            packageInfo.longVersionCode
+        } else {
+            packageInfo.versionCode.toLong()
+        }
         inlineLog(
             "service-created",
-            "version=${packageInfo.versionName} code=${packageInfo.longVersionCode}" +
+            "version=${packageInfo.versionName} code=$versionCode" +
                 " sdk=${Build.VERSION.SDK_INT} process=${android.os.Process.myPid()}",
         )
         engine = Engine()
