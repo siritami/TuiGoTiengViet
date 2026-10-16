@@ -3,8 +3,10 @@ package com.tuigo.ime
 import android.inputmethodservice.InputMethodService
 import android.annotation.SuppressLint
 import android.content.ClipboardManager
+import android.graphics.drawable.Icon
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Typeface
@@ -18,6 +20,7 @@ import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.content.SharedPreferences
 import android.util.Size
+import android.util.Log
 import android.util.TypedValue
 import android.view.WindowInsetsController
 import com.tuigo.UiTheme
@@ -25,6 +28,8 @@ import android.text.InputType
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.KeyEvent
+import android.view.SurfaceControl
+import android.view.SurfaceView
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
@@ -38,6 +43,7 @@ import android.widget.LinearLayout
 import android.widget.PopupWindow
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.inline.InlineContentView
 import android.widget.inline.InlinePresentationSpec
 import androidx.autofill.inline.UiVersions
 import androidx.autofill.inline.common.ImageViewStyle
@@ -46,6 +52,7 @@ import androidx.autofill.inline.common.ViewStyle
 import androidx.autofill.inline.v1.InlineSuggestionUi
 import com.tuigo.KeyboardThemes
 import com.tuigo.Prefs
+import com.tuigo.R
 import com.tuigo.engine.Engine
 import com.tuigo.engine.ImTelex
 import com.tuigo.engine.ImVni
@@ -53,6 +60,10 @@ import com.tuigo.engine.ImViqr
 import com.tuigo.engine.Result
 import com.tuigo.MacroFiles
 import com.tuigo.engine.loadMacroText
+import com.google.android.flexbox.FlexWrap
+import com.google.android.flexbox.FlexboxLayout
+import com.google.android.flexbox.JustifyContent
+import java.util.concurrent.Executor
 
 /**
  * InputMethodService shell around the pure-Kotlin engine port.
@@ -92,23 +103,30 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
 
     /** Inline-autofill & clipboard suggestion strip (Gboard-style chips above the keys). */
     private var suggestionScroll: HorizontalScrollView? = null
-    private var suggestionStrip: LinearLayout? = null
-    private var pendingInline: InlineSuggestionsResponse? = null
-    private var renderedInline: InlineSuggestionsResponse? = null
+    private var suggestionSurface: SurfaceView? = null
+    private var suggestionStrip: FlexboxLayout? = null
+    private var pinnedSuggestionHost: android.widget.FrameLayout? = null
+    private val scrollableInlineViews = mutableListOf<InlineContentView>()
     private var renderedClipKey: String? = null
     private var renderedHistoryOn = false
-    private var renderedReadyCount = 0
     private var renderedTheme: com.tuigo.KeyTheme? = null
-    // InlineSuggestion.inflate() throws IllegalStateException when called
-    // twice on the same suggestion — provider views are cached per response
-    // and re-parented on each rebuild, never re-inflated. Keys are the
-    // suggestion's index in its response: InlineSuggestion overrides
-    // equals/hashCode over state inflate() mutates, so the object itself is
-    // not a stable map key.
-    private var inlineOwner: InlineSuggestionsResponse? = null
-    private val inlineViews = HashMap<Int, View>()
-    private val inlineInflating = HashSet<Int>()
-    private var editorKey: String? = null
+    private var inlineGeneration = 0
+    private var hasInlineSuggestions = false
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var inlineRequestSequence = 0
+    private var inlineResponseSequence = 0
+
+    private fun inlineLog(event: String, details: String = "") {
+        Log.d(
+            "TuiGoInline",
+            "event=$event generation=$inlineGeneration request=$inlineRequestSequence" +
+                if (details.isEmpty()) "" else " $details",
+        )
+    }
+
+    private fun View.inlineGeometry(): String =
+        "view=${System.identityHashCode(this)} measured=${measuredWidth}x${measuredHeight}" +
+            " size=${width}x${height} pos=$left,$top,$right,$bottom visibility=$visibility"
 
     private var clipboardManager: ClipboardManager? = null
     private var clipCopiedAtMs = 0L
@@ -211,9 +229,10 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         keyboard.setMetrics(Prefs.keyHeightDp(this), Prefs.keyGapDp(this))
         val dm = resources.displayMetrics.density
         val pad = (6 * dm).toInt()
-        val strip = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+        val strip = FlexboxLayout(this).apply {
+            flexWrap = FlexWrap.NOWRAP
+            justifyContent = JustifyContent.FLEX_START
+            alignItems = com.google.android.flexbox.AlignItems.CENTER
             setPadding(pad, (6 * dm).toInt(), pad, (2 * dm).toInt())
         }
         val scroll = HorizontalScrollView(this).apply {
@@ -225,14 +244,40 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         }
         suggestionStrip = strip
         suggestionScroll = scroll
-        // Edge-to-edge IME windows (API 35+) are laid out full-screen; a
-        // wrap_content strip child — e.g. a provider inline view — can claim
-        // the whole window height and push the keyboard off-screen. Bound the
-        // strip to a fixed row height (chip 40dp + its 6/2dp padding).
-        val stripH = (48 * dm).toInt()
+        val surface = SurfaceView(this).apply {
+            setZOrderOnTop(true)
+        }
+        suggestionSurface = surface
+        val pinnedHost = android.widget.FrameLayout(this)
+        pinnedSuggestionHost = pinnedHost
+        scroll.addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
+            val child = (view as HorizontalScrollView).getChildAt(0)
+            inlineLog(
+                "scroll-layout",
+                "${view.inlineGeometry()} child=${child?.inlineGeometry()} scrollX=${view.scrollX}" +
+                    " contentWidth=${child?.width ?: 0} viewportWidth=${view.width}",
+            )
+        }
+        surface.addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
+            inlineLog("surface-layout", view.inlineGeometry())
+        }
+        pinnedHost.addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
+            inlineLog("pinned-layout", view.inlineGeometry())
+        }
+        // Fixed row height (40dp) matching Fcitx inline suggestion bar.
+        val stripH = (40 * dm).toInt()
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            addView(scroll, LinearLayout.LayoutParams(-1, stripH))
+            addView(android.widget.FrameLayout(this@TuiGoImeService).apply {
+                addView(LinearLayout(this@TuiGoImeService).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    addView(android.widget.FrameLayout(this@TuiGoImeService).apply {
+                        addView(scroll, android.widget.FrameLayout.LayoutParams(-1, -1))
+                        addView(surface, android.widget.FrameLayout.LayoutParams(-1, -1))
+                    }, LinearLayout.LayoutParams(0, -1, 1f))
+                    addView(pinnedHost, LinearLayout.LayoutParams(-2, -1))
+                }, android.widget.FrameLayout.LayoutParams(-1, -1))
+            }, LinearLayout.LayoutParams(-1, stripH))
             addView(keyboard, LinearLayout.LayoutParams(-1, -2))
         }
     }
@@ -254,17 +299,16 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
 
     override fun onStartInput(info: EditorInfo?, restarting: Boolean) {
         super.onStartInput(info, restarting)
-        // A different editor means any pending autofill suggestions are stale —
-        // the platform issues a fresh request/response for the new field.
-        val key = "${info?.packageName}/${info?.fieldId}/${info?.inputType}"
-        if (key != editorKey) {
-            editorKey = key
-            clearInlineSuggestions()
-        }
+        inlineLog(
+            "start-input",
+            "restarting=$restarting package=${info?.packageName} field=${info?.fieldId} inputType=${info?.inputType}",
+        )
+        clearInlineSuggestions()
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
+        inlineLog("start-input-view", "restarting=$restarting package=${info?.packageName} field=${info?.fieldId}")
         hostPkg = info?.packageName
         loadEngineConfig()
         keyboard.theme = KeyboardThemes.current(this)
@@ -307,8 +351,8 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
 
     override fun onFinishInputView(finishingInput: Boolean) {
         super.onFinishInputView(finishingInput)
-        dropToken++
-        pendingInline = null
+        inlineLog("finish-input-view", "finishing=$finishingInput")
+        clearInlineSuggestions()
         clipPanel?.dismiss()
         spacePopup?.dismiss()
         engine.resetBuf()
@@ -556,19 +600,36 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
     // although Google's own inline-suggestion docs use them — pinned dep, safe.
     @SuppressLint("NewApi", "RestrictedApi") // override is only invoked on API 30+
     override fun onCreateInlineSuggestionsRequest(uiExtras: Bundle): InlineSuggestionsRequest? {
-        if (!UiVersions.getVersions(uiExtras).contains(UiVersions.INLINE_UI_VERSION_1)) return null
+        inlineRequestSequence++
+        val versions = UiVersions.getVersions(uiExtras)
+        inlineLog(
+            "request-create",
+            "versions=$versions density=${resources.displayMetrics.density}" +
+                " display=${resources.displayMetrics.widthPixels}x${resources.displayMetrics.heightPixels}",
+        )
+        if (!versions.contains(UiVersions.INLINE_UI_VERSION_1)) {
+            inlineLog("request-rejected", "reason=unsupported-version")
+            return null
+        }
         val dm = resources.displayMetrics.density
-        val chipH = (40 * dm).toInt()
         val t = KeyboardThemes.current(this)
-        val padH = (14 * dm).toInt()
+        val chipDrawable = if (UiTheme.isDark(this)) {
+            R.drawable.bkg_inline_suggestion_dark
+        } else {
+            R.drawable.bkg_inline_suggestion_light
+        }
+        val chipBackground = Icon.createWithResource(this, chipDrawable).setTint(t.text)
+        val padH = (10 * dm).toInt()
         val chip = ViewStyle.Builder()
-            .setBackgroundColor(t.key)
+            .setBackground(chipBackground)
             .setPadding(padH, 0, padH, 0)
             .build()
         val singleChip = ViewStyle.Builder()
-            .setBackgroundColor(t.key)
+            .setBackgroundColor(Color.TRANSPARENT)
+            .setPadding(0, 0, 0, 0)
             .build()
         val title = TextViewStyle.Builder()
+            .setLayoutMargin((4 * dm).toInt(), 0, (4 * dm).toInt(), 0)
             .setTextColor(t.text)
             .setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
             .build()
@@ -576,12 +637,8 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
             .setTextColor(t.spaceText)
             .setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             .build()
-        // Action icons get our glyph tint; provider app icons stay untinted.
-        val actionIcon = ImageViewStyle.Builder()
+        val icon = ImageViewStyle.Builder()
             .setTintList(ColorStateList.valueOf(t.funcText))
-            .build()
-        val appIcon = ImageViewStyle.Builder()
-            .setScaleType(ImageView.ScaleType.FIT_CENTER)
             .build()
         val styles = UiVersions.newStylesBuilder()
             .addStyle(
@@ -590,65 +647,69 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
                     .setSingleIconChipStyle(singleChip)
                     .setTitleStyle(title)
                     .setSubtitleStyle(subtitle)
-                    .setStartIconStyle(appIcon)
-                    .setEndIconStyle(actionIcon)
-                    .setSingleIconChipIconStyle(actionIcon)
+                    .setStartIconStyle(icon)
+                    .setEndIconStyle(icon)
                     .build()
             )
             .build()
-        // Keep each chip compact so several suggestions fit on screen and the
-        // rest remain reachable by swiping the strip — a near-full-width chip
-        // hides the fact that more suggestions exist.
-        val maxW = minOf((resources.displayMetrics.widthPixels * 0.62f).toInt(),
-            (320 * dm).toInt())
-        val spec = InlinePresentationSpec.Builder(Size(chipH, chipH), Size(maxW, chipH))
+        // Let each provider choose its natural chip width. Constraining the
+        // presentation itself can make some providers collapse their response
+        // to one item; the horizontal strip handles any total width.
+        val spec = InlinePresentationSpec.Builder(
+            Size(0, 0), Size(Int.MAX_VALUE, Int.MAX_VALUE))
             .setStyle(styles)
             .build()
-        val request = InlineSuggestionsRequest.Builder(mutableListOf(spec))
+        val request = InlineSuggestionsRequest.Builder(listOf(spec))
             .setMaxSuggestionCount(InlineSuggestionsRequest.SUGGESTION_COUNT_UNLIMITED)
-        if (Build.VERSION.SDK_INT >= 31) {
-            val tooltipSpec = InlinePresentationSpec.Builder(
-                Size(chipH, chipH), Size((200 * dm).toInt(), chipH))
-                .setStyle(styles)
-                .build()
-            request.setInlineTooltipPresentationSpec(tooltipSpec)
+        return request.build().also {
+            inlineLog(
+                "request-ready",
+                "specs=${it.inlinePresentationSpecs.size} max=${it.maxSuggestionCount}" +
+                    " min=${spec.minSize} maxSize=${spec.maxSize}",
+            )
         }
-        return request.build()
     }
 
     @SuppressLint("NewApi")
     override fun onInlineSuggestionsResponse(response: InlineSuggestionsResponse): Boolean {
-        // Multi-provider autofill (e.g. Credential Manager alongside the
-        // primary service) can forward an EMPTY response milliseconds after
-        // the real one — accepting it would wipe chips that are mid-inflate.
-        // An empty response never replaces visible suggestions; editor
-        // changes and view teardown clear the strip instead.
-        if (response.inlineSuggestions.isEmpty() &&
-            pendingInline?.inlineSuggestions?.isNotEmpty() == true) return true
-        pendingInline = response
-        pendingInlineAt = SystemClock.uptimeMillis()
-        renderSuggestionStrip()
+        val responseId = ++inlineResponseSequence
+        val suggestions = response.inlineSuggestions
+        inlineLog(
+            "response",
+            "response=$responseId count=${suggestions.size} pinned=${suggestions.count { it.info.isPinned }}" +
+                " items=${suggestions.mapIndexed { index, item -> "$index:${System.identityHashCode(item)}:${item.info.isPinned}" }}",
+        )
+        if (suggestions.isEmpty()) {
+            clearInlineSuggestions()
+            renderSuggestionStrip()
+        } else {
+            val generation = inlineGeneration
+            showInlineSuggestions(suggestions, generation, responseId)
+        }
         return true
     }
 
-    private val mainHandler = Handler(Looper.getMainLooper())
-    private var dropToken = 0
-    private var pendingInlineAt = 0L
-
+    @SuppressLint("NewApi")
     private fun clearInlineSuggestions() {
-        // Don't clear instantly: apps like Firefox/GeckoView re-bind the
-        // editor repeatedly (bug 1715549), which would erase a freshly
-        // rendered inline presentation every time. Give the platform a beat
-        // to deliver the new field's response; only drop a response older
-        // than the editor change.
-        val cutoff = pendingInlineAt
-        val token = ++dropToken
-        mainHandler.postDelayed({
-            if (token == dropToken && pendingInlineAt <= cutoff) {
-                pendingInline = null
-                renderSuggestionStrip()
+        inlineGeneration++
+        hasInlineSuggestions = false
+        val scroll = suggestionScroll
+        scroll?.scrollTo(0, 0)
+        scroll?.removeAllViews()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            scrollableInlineViews.forEach { view ->
+                view.surfaceControl?.let { surfaceControl ->
+                    SurfaceControl.Transaction().reparent(surfaceControl, null).apply()
+                }
             }
-        }, 600)
+        }
+        scrollableInlineViews.clear()
+        pinnedSuggestionHost?.removeAllViews()
+        scroll?.visibility = View.GONE
+        suggestionStrip = null
+        renderedClipKey = null
+        renderedHistoryOn = false
+        renderedTheme = null
     }
 
     private data class ClipCandidate(
@@ -1095,91 +1156,286 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         renderSuggestionStrip()
     }
 
-    /** Kick off the one allowed inflate() per suggestion; the provider view is
-     *  cached on arrival and the strip re-renders to pick it up. */
+    private val inlineExecutor = Executor { it.run() }
+
     @SuppressLint("NewApi")
-    private fun kickInlineInflate(index: Int, suggestion: InlineSuggestion) {
-        if (inlineViews.containsKey(index) || !inlineInflating.add(index)) return
-        try {
-            // inflate() only accepts WRAP_CONTENT x WRAP_CONTENT or a size
-            // fully inside the spec's min/max — a mixed wrap/fixed size
-            // throws IllegalArgumentException.
-            suggestion.inflate(this,
-                Size(ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT), mainExecutor) { view ->
-                if (inlineInflating.remove(index) && view != null) {
-                    inlineViews[index] = view
+    private fun showInlineSuggestions(
+        suggestions: List<InlineSuggestion>,
+        generation: Int,
+        responseId: Int,
+    ) {
+        if (generation != inlineGeneration) {
+            inlineLog("response-stale", "response=$responseId expected=$generation actual=$inlineGeneration")
+            return
+        }
+        hasInlineSuggestions = true
+
+        if (suggestions.isEmpty()) {
+            clearInlineSuggestions()
+            renderSuggestionStrip()
+            return
+        }
+
+        var pinned: InlineSuggestion? = null
+        val scrollable = mutableListOf<InlineSuggestion>()
+        var extraPinnedCount = 0
+        suggestions.forEach {
+            if (it.info.isPinned) {
+                if (pinned == null) {
+                    pinned = it
+                } else {
+                    scrollable.add(extraPinnedCount++, it)
                 }
-                renderSuggestionStrip()
+            } else {
+                scrollable.add(it)
             }
-        } catch (e: Exception) {
-            inlineInflating.remove(index)
+        }
+        inlineLog(
+            "partition",
+            "response=$responseId total=${suggestions.size} pinned=${if (pinned == null) 0 else 1}" +
+                " scrollable=${scrollable.size} extraPinned=$extraPinnedCount",
+        )
+
+        if (pinned != null) {
+            inflateInlineSuggestion(pinned, responseId, -1) { view ->
+                mainHandler.post {
+                    if (generation != inlineGeneration) {
+                        inlineLog("pinned-stale", "response=$responseId")
+                        return@post
+                    }
+                    setPinnedInlineView(view, generation)
+                }
+            }
+        } else {
+            setPinnedInlineView(null, generation)
+        }
+
+        if (scrollable.isEmpty()) {
+            setScrollableInlineViews(emptyList(), generation)
+            return
+        }
+
+        val count = scrollable.size
+        val views = MutableList<InlineContentView?>(count) { null }
+        var completed = 0
+        val startedAt = SystemClock.uptimeMillis()
+
+        scrollable.forEachIndexed { index, suggestion ->
+            inflateInlineSuggestion(suggestion, responseId, index) { view ->
+                mainHandler.post {
+                    if (generation != inlineGeneration) {
+                        inlineLog("inflate-stale", "response=$responseId index=$index")
+                        return@post
+                    }
+                    views[index] = view
+                    completed++
+                    inlineLog(
+                        "batch-progress",
+                        "response=$responseId completed=$completed/$count index=$index nonNull=${view != null}",
+                    )
+                    if (completed == count) {
+                        inlineLog(
+                            "batch-complete",
+                            "response=$responseId count=$count nonNull=${views.count { it != null }}" +
+                                " elapsed=${SystemClock.uptimeMillis() - startedAt}ms",
+                        )
+                        setScrollableInlineViews(views, generation)
+                    }
+                }
+            }
+        }
+    }
+
+    @SuppressLint("NewApi")
+    private fun inflateInlineSuggestion(
+        suggestion: InlineSuggestion,
+        responseId: Int,
+        index: Int,
+        onInflated: (InlineContentView?) -> Unit,
+    ) {
+        val suggestionId = System.identityHashCode(suggestion)
+        val startedAt = SystemClock.uptimeMillis()
+        inlineLog(
+            "inflate-start",
+            "response=$responseId index=$index suggestion=$suggestionId pinned=${suggestion.info.isPinned}",
+        )
+        try {
+            suggestion.inflate(
+                this,
+                Size(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    (40 * resources.displayMetrics.density).toInt(),
+                ),
+                inlineExecutor,
+            ) { view ->
+                inlineLog(
+                    "inflate-callback",
+                    "response=$responseId index=$index suggestion=$suggestionId nonNull=${view != null}" +
+                        " elapsed=${SystemClock.uptimeMillis() - startedAt}ms geometry=${view?.inlineGeometry()}",
+                )
+                onInflated(view)
+            }
+        } catch (error: Exception) {
+            inlineLog(
+                "inflate-exception",
+                "response=$responseId index=$index suggestion=$suggestionId" +
+                    " type=${error.javaClass.name} message=${error.message}",
+            )
+            onInflated(null)
+        }
+    }
+
+    @SuppressLint("NewApi")
+    private fun setScrollableInlineViews(
+        views: List<InlineContentView?>,
+        generation: Int,
+    ) {
+        if (generation != inlineGeneration) return
+        val scroll = suggestionScroll ?: return
+        val surface = suggestionSurface ?: return
+        inlineLog(
+            "attach-start",
+            "views=${views.size} nonNull=${views.count { it != null }}" +
+                " scroll=${scroll.inlineGeometry()} surface=${surface.inlineGeometry()}",
+        )
+
+        scroll.scrollTo(0, 0)
+        scroll.removeAllViews()
+        scrollableInlineViews.forEach { view ->
+            view.surfaceControl?.let { surfaceControl ->
+                SurfaceControl.Transaction().reparent(surfaceControl, null).apply()
+            }
+        }
+        scrollableInlineViews.clear()
+
+        val flexbox = FlexboxLayout(this).apply {
+            flexWrap = FlexWrap.NOWRAP
+            justifyContent = JustifyContent.CENTER
+        }
+        views.forEachIndexed { index, view ->
+            if (view == null) return@forEach
+            scrollableInlineViews += view
+            view.setSurfaceControlCallback(object : InlineContentView.SurfaceControlCallback {
+                override fun onCreated(surfaceControl: SurfaceControl) {
+                    val parent = surface.surfaceControl ?: return
+                    inlineLog(
+                        "surface-created",
+                        "index=$index view=${System.identityHashCode(view)} surface=${System.identityHashCode(surfaceControl)}" +
+                            " parent=${System.identityHashCode(parent)} valid=${surfaceControl.isValid} parentValid=${parent.isValid}",
+                    )
+                    SurfaceControl.Transaction()
+                        .reparent(surfaceControl, parent)
+                        .apply()
+                }
+
+                override fun onDestroyed(surfaceControl: SurfaceControl) {
+                    inlineLog(
+                        "surface-destroyed",
+                        "index=$index view=${System.identityHashCode(view)} surface=${System.identityHashCode(surfaceControl)}",
+                    )
+                }
+            })
+            flexbox.addView(view)
+            view.layoutParams = (view.layoutParams as? FlexboxLayout.LayoutParams
+                ?: FlexboxLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                )).apply { flexShrink = 0f }
+            inlineLog("child-added", "index=$index ${view.inlineGeometry()} flexShrink=0")
+        }
+        suggestionStrip = flexbox
+        scroll.addView(flexbox, ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+        ))
+        inlineLog("attached", "children=${flexbox.childCount} ${flexbox.inlineGeometry()}")
+        flexbox.post {
+            inlineLog(
+                "attached-post-layout",
+                "children=${flexbox.childCount} ${flexbox.inlineGeometry()}" +
+                    " childGeometry=${(0 until flexbox.childCount).map { flexbox.getChildAt(it).inlineGeometry() }}" +
+                    " scroll=${scroll.inlineGeometry()} scrollX=${scroll.scrollX}",
+            )
+        }
+        activeClipCandidate = null
+        scroll.visibility = View.VISIBLE
+    }
+
+    @SuppressLint("NewApi")
+    private fun setPinnedInlineView(view: InlineContentView?, generation: Int) {
+        if (generation != inlineGeneration) return
+        val host = pinnedSuggestionHost ?: return
+        host.removeAllViews()
+        if (view != null) {
+            host.addView(view)
+            view.layoutParams = (view.layoutParams as? android.widget.FrameLayout.LayoutParams
+                ?: android.widget.FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                )).apply {
+                val margin = (10 * resources.displayMetrics.density).toInt()
+                leftMargin = margin
+                rightMargin = margin
+            }
         }
     }
 
     @SuppressLint("NewApi")
     private fun renderSuggestionStrip() {
         val scroll = suggestionScroll ?: return
-        val strip = suggestionStrip ?: return
-        val response = pendingInline
-        if (response !== inlineOwner) {
-            // Provider views die with their response — drop the whole cache so
-            // a fresh response gets fresh inflate() calls.
-            inlineViews.clear()
-            inlineInflating.clear()
-            inlineOwner = response
-        }
-        val suggestions =
-            if (Build.VERSION.SDK_INT >= 30) response?.inlineSuggestions.orEmpty() else emptyList()
-        suggestions.forEachIndexed { i, s -> kickInlineInflate(i, s) }
-        val ready = suggestions.indices.mapNotNull { inlineViews[it] }
+        if (hasInlineSuggestions) return
         val clipCand = currentClipCandidate()
         activeClipCandidate = clipCand
         val showHistory = Prefs.clipboardHistory(this) && ClipboardHistory.hasEntries(this)
-        if (ready.isEmpty() && clipCand == null && !showHistory) {
-            renderedInline = null
+        if (clipCand == null && !showHistory) {
             renderedClipKey = null
             renderedHistoryOn = false
-            renderedReadyCount = 0
-            strip.removeAllViews()
+            suggestionStrip?.removeAllViews()
+            pinnedSuggestionHost?.removeAllViews()
             scroll.visibility = View.GONE
             return
         }
-        // Same inputs as the visible strip? Keep it — reparenting a provider
-        // view for no reason can flash it away and back for a frame.
         val clipKey = clipCand?.key
-        if (response === renderedInline && clipKey == renderedClipKey &&
-                showHistory == renderedHistoryOn && ready.size == renderedReadyCount &&
-                keyboard.theme == renderedTheme && strip.childCount > 0) {
+        val currentStrip = suggestionStrip
+        if (clipKey == renderedClipKey && showHistory == renderedHistoryOn &&
+                keyboard.theme == renderedTheme && (currentStrip?.childCount ?: 0) > 0) {
             scroll.visibility = View.VISIBLE
             return
         }
-        renderedInline = response
         renderedClipKey = clipKey
         renderedHistoryOn = showHistory
-        renderedReadyCount = ready.size
         renderedTheme = keyboard.theme
         scroll.setBackgroundColor(keyboard.theme.bg)
-        val gap = (6 * resources.displayMetrics.density).toInt()
-        fun lp(moreAfter: Boolean) = LinearLayout.LayoutParams(
+        val strip = FlexboxLayout(this).apply {
+            flexWrap = FlexWrap.NOWRAP
+            justifyContent = JustifyContent.FLEX_START
+            alignItems = com.google.android.flexbox.AlignItems.CENTER
+            val padding = (6 * resources.displayMetrics.density).toInt()
+            setPadding(padding, padding, padding, (2 * resources.displayMetrics.density).toInt())
+        }
+        scroll.removeAllViews()
+        scroll.addView(strip, ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { if (moreAfter) marginEnd = gap }
-        // Provider views that were cached are already inflated — a rebuild is
-        // synchronous, so the strip is rewritten within the same frame and
-        // never shows a half-built state.
-        strip.removeAllViews()
-        // Password/autofill chips own the strip: the recent-clip chip shrinks
-        // to a tap-to-paste icon so suggestions stay readable and scrollable.
+            ViewGroup.LayoutParams.MATCH_PARENT,
+        ))
+        suggestionStrip = strip
+        val gap = (6 * resources.displayMetrics.density).toInt()
+        fun lp(view: View, moreAfter: Boolean) = FlexboxLayout.LayoutParams(
+            view.layoutParams?.width?.takeIf { it > 0 } ?: ViewGroup.LayoutParams.WRAP_CONTENT,
+            view.layoutParams?.height?.takeIf { it > 0 } ?: ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply {
+            flexShrink = 0f
+            if (moreAfter) marginEnd = gap
+        }
         val chips = mutableListOf<View>()
         if (showHistory) chips += buildHistoryChip()
-        if (clipCand != null) chips += buildClipboardChip(clipCand, compact = ready.isNotEmpty())
-        chips += ready
+        if (clipCand != null) chips += buildClipboardChip(clipCand, compact = false)
         chips.forEachIndexed { i, chip ->
             (chip.parent as? ViewGroup)?.removeView(chip)
-            chip.layoutParams = lp(i < chips.lastIndex)
+            chip.layoutParams = lp(chip, i < chips.lastIndex)
             strip.addView(chip)
         }
+        pinnedSuggestionHost?.removeAllViews()
         scroll.visibility = View.VISIBLE
     }
 
