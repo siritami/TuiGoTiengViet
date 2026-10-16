@@ -117,7 +117,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
     private var inlineResponseSequence = 0
 
     private fun inlineLog(event: String, details: String = "") {
-        Log.d(
+        Log.e(
             "TuiGoInline",
             "event=$event generation=$inlineGeneration request=$inlineRequestSequence" +
                 if (details.isEmpty()) "" else " $details",
@@ -176,6 +176,11 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
 
     override fun onCreate() {
         super.onCreate()
+        inlineLog(
+            "service-created",
+            "version=${BuildConfig.VERSION_NAME} code=${BuildConfig.VERSION_CODE}" +
+                " sdk=${Build.VERSION.SDK_INT} process=${android.os.Process.myPid()}",
+        )
         engine = Engine()
         loadEngineConfig()
         Prefs.get(this).registerOnSharedPreferenceChangeListener(preferenceListener)
@@ -184,6 +189,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
     }
 
     override fun onDestroy() {
+        inlineLog("service-destroyed")
         clipboardManager?.removePrimaryClipChangedListener(clipChangedListener)
         Prefs.get(this).unregisterOnSharedPreferenceChangeListener(preferenceListener)
         super.onDestroy()
@@ -241,6 +247,13 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
             visibility = View.GONE
             setBackgroundColor(keyboard.theme.bg)
             addView(strip, ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            setOnScrollChangeListener { view, scrollX, scrollY, oldScrollX, oldScrollY ->
+                inlineLog(
+                    "scroll-change",
+                    "view=${System.identityHashCode(view)} from=$oldScrollX,$oldScrollY" +
+                        " to=$scrollX,$scrollY childWidth=${getChildAt(0)?.width ?: 0} viewport=$width",
+                )
+            }
         }
         suggestionStrip = strip
         suggestionScroll = scroll
@@ -691,14 +704,24 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
 
     @SuppressLint("NewApi")
     private fun clearInlineSuggestions() {
+        inlineLog(
+            "clear-start",
+            "attached=${scrollableInlineViews.size} scrollChildren=${suggestionScroll?.childCount ?: -1}" +
+                " pinnedChildren=${pinnedSuggestionHost?.childCount ?: -1}",
+        )
         inlineGeneration++
         hasInlineSuggestions = false
         val scroll = suggestionScroll
         scroll?.scrollTo(0, 0)
         scroll?.removeAllViews()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            scrollableInlineViews.forEach { view ->
+            scrollableInlineViews.forEachIndexed { index, view ->
                 view.surfaceControl?.let { surfaceControl ->
+                    inlineLog(
+                        "surface-detach",
+                        "index=$index view=${System.identityHashCode(view)}" +
+                            " surface=${System.identityHashCode(surfaceControl)} valid=${surfaceControl.isValid}",
+                    )
                     SurfaceControl.Transaction().reparent(surfaceControl, null).apply()
                 }
             }
@@ -710,6 +733,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         renderedClipKey = null
         renderedHistoryOn = false
         renderedTheme = null
+        inlineLog("clear-complete")
     }
 
     private data class ClipCandidate(
@@ -1290,9 +1314,20 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         views: List<InlineContentView?>,
         generation: Int,
     ) {
-        if (generation != inlineGeneration) return
-        val scroll = suggestionScroll ?: return
-        val surface = suggestionSurface ?: return
+        if (generation != inlineGeneration) {
+            inlineLog("attach-rejected", "reason=stale expected=$generation actual=$inlineGeneration")
+            return
+        }
+        val scroll = suggestionScroll
+        if (scroll == null) {
+            inlineLog("attach-rejected", "reason=no-scroll")
+            return
+        }
+        val surface = suggestionSurface
+        if (surface == null) {
+            inlineLog("attach-rejected", "reason=no-surface")
+            return
+        }
         inlineLog(
             "attach-start",
             "views=${views.size} nonNull=${views.count { it != null }}" +
@@ -1317,7 +1352,11 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
             scrollableInlineViews += view
             view.setSurfaceControlCallback(object : InlineContentView.SurfaceControlCallback {
                 override fun onCreated(surfaceControl: SurfaceControl) {
-                    val parent = surface.surfaceControl ?: return
+                    val parent = surface.surfaceControl
+                    if (parent == null) {
+                        inlineLog("surface-reparent-rejected", "index=$index reason=no-parent-surface")
+                        return
+                    }
                     inlineLog(
                         "surface-created",
                         "index=$index view=${System.identityHashCode(view)} surface=${System.identityHashCode(surfaceControl)}" +
@@ -1363,8 +1402,15 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
 
     @SuppressLint("NewApi")
     private fun setPinnedInlineView(view: InlineContentView?, generation: Int) {
-        if (generation != inlineGeneration) return
-        val host = pinnedSuggestionHost ?: return
+        if (generation != inlineGeneration) {
+            inlineLog("pinned-rejected", "reason=stale expected=$generation actual=$inlineGeneration")
+            return
+        }
+        val host = pinnedSuggestionHost
+        if (host == null) {
+            inlineLog("pinned-rejected", "reason=no-host")
+            return
+        }
         host.removeAllViews()
         if (view != null) {
             host.addView(view)
@@ -1377,6 +1423,12 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
                 leftMargin = margin
                 rightMargin = margin
             }
+            inlineLog("pinned-attached", view.inlineGeometry())
+            view.post {
+                inlineLog("pinned-post-layout", "${view.inlineGeometry()} host=${host.inlineGeometry()}")
+            }
+        } else {
+            inlineLog("pinned-cleared")
         }
     }
 
