@@ -117,11 +117,17 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
     private var inlineResponseSequence = 0
 
     private fun inlineLog(event: String, details: String = "") {
-        Log.e(
-            "TuiGoInline",
-            "event=$event generation=$inlineGeneration request=$inlineRequestSequence" +
-                if (details.isEmpty()) "" else " $details",
-        )
+        val message = "event=$event generation=$inlineGeneration request=$inlineRequestSequence" +
+            if (details.isEmpty()) "" else " $details"
+        Log.e("TuiGoInline", message)
+        System.err.println("TuiGoInline $message")
+        try {
+            val debugFile = java.io.File(filesDir, "inline-debug.log")
+            if (debugFile.length() > 512 * 1024) {
+                debugFile.writeText("")
+            }
+            debugFile.appendText("${System.currentTimeMillis()} $message\n")
+        } catch (_: Exception) { }
     }
 
     private fun View.inlineGeometry(): String =
