@@ -2455,9 +2455,9 @@ func settingsProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 			case swIDs[id]:
 				drawSmoothSwitch(di.hDC, di.rcItem, id, swState[id])
 			case id == cThemeAuto || id == cThemeLight || id == cThemeDark:
-				pressed := di.itBasic || id == cThemeemState&ODS_SELECTED != 0
+				pressed := di.itemState&ODS_SELECTED != 0
 				drawSmoothThemeButton(di.hDC, di.rcItem, id, pressed)
-			case id == cThemeJade || id == cThemeIosPure || id == cThemeCyberNeon || id == cThemeMatchaLatte || id == cThemeMaterialTeal:
+			case id == cThemeBasic || id == cThemeJade || id == cThemeIosPure || id == cThemeCyberNeon || id == cThemeMatchaLatte || id == cThemeMaterialTeal:
 				pressed := di.itemState&ODS_SELECTED != 0
 				drawSmoothStyleCard(di.hDC, di.rcItem, id, pressed)
 			case btnIDs[id]:
