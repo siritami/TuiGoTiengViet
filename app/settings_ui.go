@@ -801,16 +801,24 @@ func drawOverviewTab(dc uintptr, cx, ct, cw, winH int32) {
 		gfx.Destroy()
 	}
 
-	// Hero Card text — status display only (no master switch, EVKey-style)
+	// Hero Card text — status display only (no master switch, EVKey-style).
+	// On solid-fill styles the active hero is painted in accent — flip all
+	// its inks to the on-accent color or text drowns on the mint fill.
+	heroSolid := effectiveViet() && solidAccentSelected()
+	heroText, heroSub := colText, colMuted
+	if heroSolid {
+		heroText = accentOnCol()
+		heroSub = accentOnCol()
+	}
 	textX := cx + dp(18)
-	pSetTextColor.Call(dc, colText)
+	pSetTextColor.Call(dc, heroText)
 	pSelectObject.Call(dc, fontBold)
 	htrc := rect{textX, ct + dp(8), cx + cw - dp(140), ct + dp(30)}
 	pDrawText.Call(dc, uintptr(unsafe.Pointer(utf16ptr(tr("Chế độ gõ hiện tại", "Current input mode")))),
 		^uintptr(0), uintptr(unsafe.Pointer(&htrc)),
 		DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX)
 
-	pSetTextColor.Call(dc, colMuted)
+	pSetTextColor.Call(dc, heroSub)
 	pSelectObject.Call(dc, fontHint)
 	hdrc := rect{textX, ct + dp(30), cx + cw - dp(140), ct + dp(48)}
 	pDrawText.Call(dc, uintptr(unsafe.Pointer(utf16ptr(tr("Bấm phím tắt để chuyển Tiếng Việt / English", "Press shortcut to toggle Vietnamese / English")))),
@@ -823,6 +831,9 @@ func drawOverviewTab(dc uintptr, cx, ct, cw, winH int32) {
 	if !effectiveViet() {
 		modeTxt = "● English"
 		modeCol = colMuted
+	}
+	if heroSolid {
+		modeCol = accentOnCol()
 	}
 	pSetTextColor.Call(dc, modeCol)
 	pSelectObject.Call(dc, fontBold)
