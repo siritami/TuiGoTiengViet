@@ -146,7 +146,11 @@ func solidAccentSelected() bool {
 
 // accentOnCol picks the ink that reads on top of argbAccent: near-black on
 // light accents (mint #3ED3B8, user picks), white on dark accents (#197F64).
+// cfg.AccentText overrides the auto choice (RGB stored, return as COLORREF).
 func accentOnCol() uintptr {
+	if cfg.AccentText >= 0 {
+		return rgb2ref(cfg.AccentText)
+	}
 	c := argbAccent & 0x00FFFFFF
 	lum := 0.299*float64(c>>16&0xFF) + 0.587*float64(c>>8&0xFF) + 0.114*float64(c&0xFF)
 	if lum > 140 {
@@ -157,6 +161,9 @@ func accentOnCol() uintptr {
 
 // accentOnArgb is accentOnCol for GDI+ ARGB (nav icons, badge glyphs).
 func accentOnArgb() uint32 {
+	if cfg.AccentText >= 0 {
+		return 0xFF000000 | uint32(cfg.AccentText&0x00FFFFFF)
+	}
 	c := argbAccent & 0x00FFFFFF
 	lum := 0.299*float64(c>>16&0xFF) + 0.587*float64(c>>8&0xFF) + 0.114*float64(c&0xFF)
 	if lum > 140 {
@@ -292,6 +299,17 @@ func traySwatchColor(id int) int {
 			return cfg.Accent
 		}
 		return int(argbAccent & 0x00FFFFFF)
+	case cAccentText:
+		if cfg.AccentText >= 0 {
+			return cfg.AccentText
+		}
+		// show the auto-picked ink color (not the accent fill)
+		c := argbAccent & 0x00FFFFFF
+		lum := 0.299*float64(c>>16&0xFF) + 0.587*float64(c>>8&0xFF) + 0.114*float64(c&0xFF)
+		if lum > 140 {
+			return 0x0F1115
+		}
+		return 0xFFFFFF
 	}
 	return 0
 }
@@ -309,7 +327,7 @@ func drawTraySwatch(dc uintptr, rc rect, id int, pressed bool) {
 	x, y, w, h := float32(rc.left), float32(rc.top), float32(rc.right-rc.left), float32(rc.bottom-rc.top)
 	r := float32(dp(8))
 	gfx.DrawGlassPill(x, y, w, h, r, isDark(), false, pressed)
-
+|| cfg.AccentText < 0 && id == cAccentText 
 	// Color square
 	rgb := traySwatchColor(id)
 	argb := uint32(0xFF000000) | uint32(rgb)

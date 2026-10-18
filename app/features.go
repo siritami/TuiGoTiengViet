@@ -45,6 +45,8 @@ type config struct {
 	TrayE, TrayEBg int // letter + badge fill of the "E" (English)
 	// Accent override for the "Cơ bản" style only: RGB or -1 = palette jade.
 	Accent int
+	// Text-on-accent override: RGB or -1 = auto pick by accent luminance.
+	AccentText int
 }
 
 var cfg config

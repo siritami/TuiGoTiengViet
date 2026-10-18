@@ -226,6 +226,7 @@ const (
 	cTrayEBg
 	cTrayReset
 	cAccent
+	cAccentText
 )
 
 var imList = []int{ImTelex, ImTelexSimple, ImVni, ImViqr, ImTelexVni, ImMsVi, ImUsrKeymap}
@@ -1549,7 +1550,10 @@ func buildControls(h uintptr) {
 		stAccentLabel = addLabel(tr("Màu nền", "Accent color"))
 		btnIDs[cAccent] = true
 		mkCtl(h, ctlDef{cAccent, "BUTTON", BS_OWNERDRAW | WS_TABSTOP, "", 0, 0, 10, 10})
-		btnText[cAccent] = tr("Chọn màu", "Pick color")
+		btnText[cAccent] = tr("Nền", "Fill")
+		btnIDs[cAccentText] = true
+		mkCtl(h, ctlDef{cAccentText, "BUTTON", BS_OWNERDRAW | WS_TABSTOP, "", 0, 0, 10, 10})
+		btnText[cAccentText] = tr("Chữ", "Text")
 	}
 
 	// ---- Tab 5: Giới thiệu ----
@@ -1678,9 +1682,10 @@ func layoutAll() {
 	}
 	place(cTrayReset, cx+cw-dp(16)-dp(72), trayY, dp(72), dp(34))
 	if ctlHnd[cAccent] != 0 {
-		place(stTrayHint, cx+dp(16), ct+dp(310), cw-dp(260), dp(20))
-		place(stAccentLabel, cx+cw-dp(16)-dp(224), ct+dp(312), dp(72), dp(20))
-		place(cAccent, cx+cw-dp(16)-dp(148), ct+dp(308), dp(148), dp(30))
+		place(stTrayHint, cx+dp(16), ct+dp(310), cw-dp(330), dp(20))
+		place(stAccentLabel, cx+cw-dp(16)-dp(292), ct+dp(312), dp(52), dp(20))
+		place(cAccent, cx+cw-dp(16)-dp(238), ct+dp(308), dp(110), dp(30))
+		place(cAccentText, cx+cw-dp(16)-dp(120), ct+dp(308), dp(120), dp(30))
 	} else {
 		place(stTrayHint, cx+dp(16), ct+dp(310), cw-dp(32), dp(20))
 	}
@@ -2290,6 +2295,25 @@ func settingsCommand(id int) {
 			rethemed = true
 			pDestroyWindow.Call(gSettingsHwnd)
 		}
+	case cAccentText:
+		seed := cfg.AccentText
+		if seed < 0 {
+			// seed with the auto-picked ink so the dialog opens at current
+			ac := argbAccent & 0x00FFFFFF
+			lum := 0.299*float64(ac>>16&0xFF) + 0.587*float64(ac>>8&0xFF) + 0.114*float64(ac&0xFF)
+			if lum > 140 {
+				seed = 0x0F1115
+			} else {
+				seed = 0xFFFFFF
+			}
+		}
+		if rgb, ok := pickColor(seed); ok {
+			cfg.AccentText = rgb
+			saveSettings()
+			rethemed = true
+			pDestroyWindow.Call(gSettingsHwnd)
+		}
+		return
 		return
 	case cThemeAuto, cThemeLight, cThemeDark:
 		newTheme := themeAuto
@@ -2586,7 +2610,7 @@ func settingsProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 				drawSmoothThemeButton(di.hDC, di.rcItem, id, pressed)
 			case id == cThemeBasic || id == cThemeJade || id == cThemeIosPure || id == cThemeCyberNeon || id == cThemeMatchaLatte || id == cThemeMaterialTeal:
 				pressed := di.itemState&ODS_SELECTED != 0
-				drawSmoothStyleCard(di.hDC, di.rcItem, id, pressed)
+				drawSmoothStyleCard(di.hDC, di.rcItem, id, pressed) || id == cAccentText
 			case id == cTrayV || id == cTrayVBg || id == cTrayE || id == cTrayEBg || id == cAccent:
 				pressed := di.itemState&ODS_SELECTED != 0
 				drawTraySwatch(di.hDC, di.rcItem, id, pressed)
