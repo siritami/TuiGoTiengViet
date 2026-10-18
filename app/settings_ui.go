@@ -227,6 +227,7 @@ const (
 	cTrayReset
 	cAccent
 	cAccentText
+	cAccentReset
 )
 
 var imList = []int{ImTelex, ImTelexSimple, ImVni, ImViqr, ImTelexVni, ImMsVi, ImUsrKeymap}
@@ -784,8 +785,13 @@ func drawSettingsTab(dc uintptr, tab int, cx, ct, cw int32) {
 		drawSettingsCard(dc, rect{cx, ct + dp(226), cx + cw, ct + dp(374)})
 	case 4: // Appearance: color mode & theme style + tray icon customizer
 		drawSettingsCard(dc, rect{cx, ct, cx + cw, ct + dp(94)})
-		drawSettingsCard(dc, rect{cx, ct + dp(106), cx + cw, ct + dp(224)})
-		drawSettingsCard(dc, rect{cx, ct + dp(236), cx + cw, ct + dp(340)})
+		// Style card grows an extra row for the accent pickers on Cơ bản
+		card2Bot, card3Top := dp(224), dp(236)
+		if cfg.Style == styleBasic {
+			card2Bot, card3Top = dp(272), dp(284)
+		}
+		drawSettingsCard(dc, rect{cx, ct + dp(106), cx + cw, ct + card2Bot})
+		drawSettingsCard(dc, rect{cx, ct + card3Top, cx + cw, ct + card3Top + dp(104)})
 	}
 }
 
@@ -1547,13 +1553,14 @@ func buildControls(h uintptr) {
 	stTrayHint = addHint(tr("Bấm ô màu để đổi màu biểu tượng khay V/E", "Click a swatch to recolor the V/E tray icon"))
 	if cfg.Style == styleBasic {
 		// Accent picker — only meaningful on the flat Cơ bản style
-		stAccentLabel = addLabel(tr("Màu nền", "Accent color"))
+		stAccentLabel = addLabel(tr("Màu nhấn", "Accent color"))
 		btnIDs[cAccent] = true
 		mkCtl(h, ctlDef{cAccent, "BUTTON", BS_OWNERDRAW | WS_TABSTOP, "", 0, 0, 10, 10})
 		btnText[cAccent] = tr("Nền", "Fill")
 		btnIDs[cAccentText] = true
 		mkCtl(h, ctlDef{cAccentText, "BUTTON", BS_OWNERDRAW | WS_TABSTOP, "", 0, 0, 10, 10})
 		btnText[cAccentText] = tr("Chữ", "Text")
+		addBtn(cAccentReset, tr("Mặc định", "Reset"))
 	}
 
 	// ---- Tab 5: Giới thiệu ----
@@ -1672,8 +1679,19 @@ func layoutAll() {
 		}
 		place(tid, tx, ct+dp(146), tw, dp(64))
 	}
-	place(stTraySection, cx+dp(16), ct+dp(248), cw-dp(32), dp(20))
-	trayY := ct + dp(272)
+	// Accent pickers live at the bottom of the style card — Cơ bản only.
+	// The card grows dp(48) when visible, so everything below shifts by accOff.
+	accOff := int32(0)
+	if ctlHnd[cAccent] != 0 {
+		accOff = dp(48)
+		place(stAccentLabel, cx+dp - dp(80)) / 2
+		place(cAccent, cx+dp(16), ct+dp(240), aw, dp(28))
+		place(cAccentText, cx+dp(16)+aw+dp(8), ct+dp(240), aw, dp(28))
+		place(cAccentReset, cx+cw-dp(16)-dp(72), ct+dp(240), dp(72)
+		place(cAccentText, cx+dp(16)+aw+dp(8), ct+dp(240), aw, dp(28))
+	}
+	place(stTraySection, cx+dp(16), ct+dp(248)+accOff, cw-dp(32), dp(20))
+	trayY := ct + dp(272) + accOff
 	trayW := (cw - dp(32) - dp(16) - 3*dp(8) - dp(80)) / 4
 	trayIDs := []int{cTrayV, cTrayVBg, cTrayE, cTrayEBg}
 	for i, id := range trayIDs {
@@ -1681,14 +1699,7 @@ func layoutAll() {
 		place(id, tx, trayY, trayW, dp(34))
 	}
 	place(cTrayReset, cx+cw-dp(16)-dp(72), trayY, dp(72), dp(34))
-	if ctlHnd[cAccent] != 0 {
-		place(stTrayHint, cx+dp(16), ct+dp(310), cw-dp(330), dp(20))
-		place(stAccentLabel, cx+cw-dp(16)-dp(292), ct+dp(312), dp(52), dp(20))
-		place(cAccent, cx+cw-dp(16)-dp(238), ct+dp(308), dp(110), dp(30))
-		place(cAccentText, cx+cw-dp(16)-dp(120), ct+dp(308), dp(120), dp(30))
-	} else {
-		place(stTrayHint, cx+dp(16), ct+dp(310), cw-dp(32), dp(20))
-	}
+	place(stTrayHint, cx+dp(16), ct+dp(310)+accOff, cw-dp(32), dp(20))
 
 	// Tab 5 — Giới thiệu (button sits inside the second card)
 	place(cUpdateBtn, cx+cw-dp(20)-dp(170), ct+dp(317), dp(170), dp(32))
@@ -2314,7 +2325,15 @@ func settingsCommand(id int) {
 			rethemed = true
 			pDestroyWindow.Call(gSettingsHwnd)
 		}
+		returAccentReset:
+		if cfg.Accent >= 0 || cfg.AccentText >= 0 {
+			cfg.Accent, cfg.AccentText = -1, -1
+			saveSettings()
+			rethemed = true
+			pDestroyWindow.Call(gSettingsHwnd)
+		}
 		return
+	case cn
 	case cThemeAuto, cThemeLight, cThemeDark:
 		newTheme := themeAuto
 		switch id {
