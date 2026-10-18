@@ -327,7 +327,7 @@ func drawTraySwatch(dc uintptr, rc rect, id int, pressed bool) {
 	x, y, w, h := float32(rc.left), float32(rc.top), float32(rc.right-rc.left), float32(rc.bottom-rc.top)
 	r := float32(dp(8))
 	gfx.DrawGlassPill(x, y, w, h, r, isDark(), false, pressed)
-|| cfg.AccentText < 0 && id == cAccentText 
+
 	// Color square
 	rgb := traySwatchColor(id)
 	argb := uint32(0xFF000000) | uint32(rgb)
@@ -338,7 +338,7 @@ func drawTraySwatch(dc uintptr, rc rect, id int, pressed bool) {
 	gfx.DrawRoundedRect(sx, sy, sq, sq, float32(dp(4)), HexAlphaARGB(0xA0, argbBorder&0x00FFFFFF), 1.0)
 	if cfg.TrayV < 0 && id == cTrayV || cfg.TrayVBg < 0 && id == cTrayVBg ||
 		cfg.TrayE < 0 && id == cTrayE || cfg.TrayEBg < 0 && id == cTrayEBg ||
-		cfg.Accent < 0 && id == cAccent {
+		cfg.Accent < 0 && id == cAccent || cfg.AccentText < 0 && id == cAccentText {
 		// Unset — small "auto" dot so the user sees it follows the theme
 		gfx.FillCircle(sx+sq-float32(dp(2)), sy+float32(dp(2)), float32(dp(3)), argbMuted)
 	}
