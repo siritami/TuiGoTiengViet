@@ -181,6 +181,9 @@ func drawSmoothRadioCard(dc uintptr, rc rect, id int, selected bool) {
 	bulletCol := argbAccent
 	if solid {
 		bulletCol = 0xFFFFFFFF
+		if argbAccent&0x00FFFFFF == 0x3ED3B8 {
+			bulletCol = 0xFF0F1115
+		}
 	}
 
 	if selected {
@@ -474,6 +477,9 @@ func drawSmoothThemeButton(dc uintptr, rc rect, id int, pressed bool) {
 	}
 	if solid {
 		iconCol = 0xFFFFFFFF
+		if argbAccent&0x00FFFFFF == 0x3ED3B8 {
+			iconCol = 0xFF0F1115
+		}
 	}
 	iconX := x + float32(dp(18))
 	iconY := y + h/2.0
@@ -505,7 +511,11 @@ func drawSmoothThemeButton(dc uintptr, rc rect, id int, pressed bool) {
 		gfx.DrawLine(iconX+d, iconY+d, iconX+dl, iconY+dl, iconCol, thk)
 		gfx.DrawLine(iconX-dl, iconY+dl, iconX-d, iconY+d, iconCol, thk)
 		gfx.DrawLine(iconX+d, iconY-d, iconX+dl, iconY-dl, iconCol, thk)
-moonBg := argbCard
+
+	case themeDark: // Moon crescent icon
+		mr := iconSz * 0.40
+		gfx.DrawCircle(iconX, iconY, mr, iconCol, thk)
+		moonBg := argbCard
 		if solid {
 			moonBg = argbSwitchOn // card fill is the accent — cut crescent from it
 		}
@@ -519,10 +529,6 @@ moonBg := argbCard
 		if solid {
 			titleCol = accentOnCol()
 		}
-	pSetBkMode.Call(dc, TRANSPARENT)
-	titleCol := colText
-	if selected {
-		titleCol = colGold
 	}
 	pSetTextColor.Call(dc, titleCol)
 	oldF, _, _ := pSelectObject.Call(dc, fontBold)
