@@ -34,6 +34,10 @@ var trayLastViet bool
 var gTrayToggleApp inputAppContext // target captured before the deferred single click
 var gTrayMenuApp inputAppContext
 
+// Double-click sequence is LBUTTONUP → DBLCLK → LBUTTONUP: the second UP must
+// not re-arm the deferred toggle, or settings opens AND V/E still flips.
+var gTrayDblclkArmed bool
+
 func refreshTrayIcons() {
 	dark := isDark()
 	size, _, _ := pGetSystemMetrics.Call(49) // SM_CXSMICON

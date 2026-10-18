@@ -276,7 +276,7 @@ func loadSettings() bool {
 		cfg.Style = cfg.Theme - 2
 		cfg.Theme = 0
 	}
-	if cfg.Style < 0 || cfg.Style > 4 {
+	if cfg.Style < 0 || cfg.Style > 5 {
 		cfg.Style = 0
 	}
 	if cfg.Theme < 0 || cfg.Theme > 2 {
