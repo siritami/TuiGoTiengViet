@@ -536,6 +536,15 @@ func applyTheme() {
 	argbText, argbMuted, argbAccent = p.aText, p.aMuted, p.aAccent
 	argbSwitchOn, argbSwitchOff, argbKeycap = p.aSwitchOn, p.aSwitchOff, p.aKeycap
 
+	// Cơ bản lets the user recolor the accent (Giao diện → Màu nền).
+	if cfg.Style == styleBasic && cfg.Accent >= 0 {
+		rgb := cfg.Accent
+		c := uintptr(rgb&0xFF)<<16 | uintptr(rgb&0xFF00) | uintptr((rgb>>16)&0xFF)
+		colGold, colAmber, colJade = c, c, c
+		argbAccent = 0xFF000000 | uint32(rgb)
+		argbSwitchOn = argbAccent
+	}
+
 	// clean up existing brushes/pens
 	deleteGdiObj(&brBg)
 	deleteGdiObj(&brCard)

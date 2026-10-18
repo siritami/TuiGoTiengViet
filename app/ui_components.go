@@ -144,13 +144,25 @@ func solidAccentSelected() bool {
 	return cfg.Style == styleBasic
 }
 
-// accentOnCol picks the ink that reads on top of argbAccent: white on the
-// dark jade (#197F64), near-black on the luminous mint (#3ED3B8).
+// accentOnCol picks the ink that reads on top of argbAccent: near-black on
+// light accents (mint #3ED3B8, user picks), white on dark accents (#197F64).
 func accentOnCol() uintptr {
-	if argbAccent&0x00FFFFFF == 0x3ED3B8 {
+	c := argbAccent & 0x00FFFFFF
+	lum := 0.299*float64(c>>16&0xFF) + 0.587*float64(c>>8&0xFF) + 0.114*float64(c&0xFF)
+	if lum > 140 {
 		return 0x15110F // #0F1115
 	}
 	return 0xFFFFFF
+}
+
+// accentOnArgb is accentOnCol for GDI+ ARGB (nav icons, badge glyphs).
+func accentOnArgb() uint32 {
+	c := argbAccent & 0x00FFFFFF
+	lum := 0.299*float64(c>>16&0xFF) + 0.587*float64(c>>8&0xFF) + 0.114*float64(c&0xFF)
+	if lum > 140 {
+		return 0xFF0F1115
+	}
+	return 0xFFFFFFFF
 }
 
 // drawSmoothRadioCard renders an anti-aliased radio selection card with Liquid Glass styling.
@@ -176,10 +188,7 @@ func drawSmoothRadioCard(dc uintptr, rc rect, id int, selected bool) {
 	solid := selected && solidAccentSelected()
 	bulletCol := argbAccent
 	if solid {
-		bulletCol = 0xFFFFFFFF
-		if argbAccent&0x00FFFFFF == 0x3ED3B8 {
-			bulletCol = 0xFF0F1115
-		}
+		bulletCol = accentOnArgb()
 	}
 
 	if selected {
@@ -278,6 +287,11 @@ func traySwatchColor(id int) int {
 			return cfg.TrayEBg
 		}
 		return trayDefEBg
+	case cAccent:
+		if cfg.Accent >= 0 {
+			return cfg.Accent
+		}
+		return int(argbAccent & 0x00FFFFFF)
 	}
 	return 0
 }
@@ -305,7 +319,8 @@ func drawTraySwatch(dc uintptr, rc rect, id int, pressed bool) {
 	gfx.FillRoundedRect(sx, sy, sq, sq, float32(dp(4)), argb)
 	gfx.DrawRoundedRect(sx, sy, sq, sq, float32(dp(4)), HexAlphaARGB(0xA0, argbBorder&0x00FFFFFF), 1.0)
 	if cfg.TrayV < 0 && id == cTrayV || cfg.TrayVBg < 0 && id == cTrayVBg ||
-		cfg.TrayE < 0 && id == cTrayE || cfg.TrayEBg < 0 && id == cTrayEBg {
+		cfg.TrayE < 0 && id == cTrayE || cfg.TrayEBg < 0 && id == cTrayEBg ||
+		cfg.Accent < 0 && id == cAccent {
 		// Unset — small "auto" dot so the user sees it follows the theme
 		gfx.FillCircle(sx+sq-float32(dp(2)), sy+float32(dp(2)), float32(dp(3)), argbMuted)
 	}
@@ -541,10 +556,7 @@ func drawSmoothThemeButton(dc uintptr, rc rect, id int, pressed bool) {
 		iconCol = argbAccent
 	}
 	if solid {
-		iconCol = 0xFFFFFFFF
-		if argbAccent&0x00FFFFFF == 0x3ED3B8 {
-			iconCol = 0xFF0F1115
-		}
+		iconCol = accentOnArgb()
 	}
 	iconX := x + float32(dp(18))
 	iconY := y + h/2.0

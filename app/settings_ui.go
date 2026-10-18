@@ -166,6 +166,7 @@ var (
 	stMacroSection, stMacroHint1, stMacroHint2                                                   int
 	stThemeModeSection, stStyleSection, stSysSection, stLbTheme, stExcludeSection, stExcludeHint int
 	stTraySection, stTrayHint                                                                 int
+	stAccentLabel                                                                             int
 )
 
 // control IDs
@@ -224,6 +225,7 @@ const (
 	cTrayE
 	cTrayEBg
 	cTrayReset
+	cAccent
 )
 
 var imList = []int{ImTelex, ImTelexSimple, ImVni, ImViqr, ImTelexVni, ImMsVi, ImUsrKeymap}
@@ -555,10 +557,7 @@ func drawNavClipped(dc uintptr, clip rect) {
 				// pill (Cơ bản) flip it to the on-accent ink.
 				barCol := argbAccent
 				if cfg.Style == styleBasic {
-					barCol = 0xFFFFFFFF
-					if argbAccent&0x00FFFFFF == 0x3ED3B8 {
-						barCol = 0xFF0F1115
-					}
+					barCol = accentOnArgb()
 				}
 				gfx.FillRoundedRect(x+float32(dp(3)), y+float32(dp(9)), float32(dp(4)), h-float32(dp(18)), 2.0, barCol)
 			}
@@ -667,10 +666,7 @@ func drawNavClipped(dc uintptr, clip rect) {
 					br = float32(dp(6))
 					if active {
 						gfx.FillRoundedRect(bx, by, bsz, bsz, br, argbAccent)
-						iconCol = 0xFFFFFFFF
-						if argbAccent&0x00FFFFFF == 0x3ED3B8 {
-							iconCol = 0xFF0F1115
-						}
+						iconCol = accentOnArgb()
 					} else {
 						gfx.FillRoundedRect(bx, by, bsz, bsz, br, argbKeycap)
 						gfx.DrawRoundedRect(bx, by, bsz, bsz, br, argbBorder, 1.0)
@@ -712,12 +708,8 @@ func drawNavClipped(dc uintptr, clip rect) {
 			titleColor = colGold
 			if cfg.Style == styleBasic {
 				// Pill is filled solid accent — draw ink on top of it
-				titleColor = 0xFFFFFF
-				descColor = 0xFFFFFF
-				if argbAccent&0x00FFFFFF == 0x3ED3B8 {
-					titleColor = 0x15110F
-					descColor = 0x15110F
-				}
+				titleColor = accentOnCol()
+				descColor = accentOnCol()
 			}
 		}
 		pSetTextColor.Call(dc, titleColor)
@@ -1552,6 +1544,13 @@ func buildControls(h uintptr) {
 	btnText[cTrayEBg] = tr("Nền E", "E bg")
 	addBtn(cTrayReset, tr("Mặc định", "Reset"))
 	stTrayHint = addHint(tr("Bấm ô màu để đổi màu biểu tượng khay V/E", "Click a swatch to recolor the V/E tray icon"))
+	if cfg.Style == styleBasic {
+		// Accent picker — only meaningful on the flat Cơ bản style
+		stAccentLabel = addLabel(tr("Màu nền", "Accent color"))
+		btnIDs[cAccent] = true
+		mkCtl(h, ctlDef{cAccent, "BUTTON", BS_OWNERDRAW | WS_TABSTOP, "", 0, 0, 10, 10})
+		btnText[cAccent] = tr("Chọn màu", "Pick color")
+	}
 
 	// ---- Tab 5: Giới thiệu ----
 	curTab = 5
@@ -1678,7 +1677,13 @@ func layoutAll() {
 		place(id, tx, trayY, trayW, dp(34))
 	}
 	place(cTrayReset, cx+cw-dp(16)-dp(72), trayY, dp(72), dp(34))
-	place(stTrayHint, cx+dp(16), ct+dp(310), cw-dp(32), dp(20))
+	if ctlHnd[cAccent] != 0 {
+		place(stTrayHint, cx+dp(16), ct+dp(310), cw-dp(260), dp(20))
+		place(stAccentLabel, cx+cw-dp(16)-dp(224), ct+dp(312), dp(72), dp(20))
+		place(cAccent, cx+cw-dp(16)-dp(148), ct+dp(308), dp(148), dp(30))
+	} else {
+		place(stTrayHint, cx+dp(16), ct+dp(310), cw-dp(32), dp(20))
+	}
 
 	// Tab 5 — Giới thiệu (button sits inside the second card)
 	place(cUpdateBtn, cx+cw-dp(20)-dp(170), ct+dp(317), dp(170), dp(32))
@@ -2274,6 +2279,18 @@ func settingsCommand(id int) {
 			pInvalidateRect.Call(ctlHnd[tid], 0, 1)
 		}
 		return
+	case cAccent:
+		seed := cfg.Accent
+		if seed < 0 {
+			seed = int(argbAccent & 0x00FFFFFF)
+		}
+		if rgb, ok := pickColor(seed); ok {
+			cfg.Accent = rgb
+			saveSettings()
+			rethemed = true
+			pDestroyWindow.Call(gSettingsHwnd)
+		}
+		return
 	case cThemeAuto, cThemeLight, cThemeDark:
 		newTheme := themeAuto
 		switch id {
@@ -2570,7 +2587,7 @@ func settingsProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 			case id == cThemeBasic || id == cThemeJade || id == cThemeIosPure || id == cThemeCyberNeon || id == cThemeMatchaLatte || id == cThemeMaterialTeal:
 				pressed := di.itemState&ODS_SELECTED != 0
 				drawSmoothStyleCard(di.hDC, di.rcItem, id, pressed)
-			case id == cTrayV || id == cTrayVBg || id == cTrayE || id == cTrayEBg:
+			case id == cTrayV || id == cTrayVBg || id == cTrayE || id == cTrayEBg || id == cAccent:
 				pressed := di.itemState&ODS_SELECTED != 0
 				drawTraySwatch(di.hDC, di.rcItem, id, pressed)
 			case btnIDs[id]:

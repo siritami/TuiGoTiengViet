@@ -43,6 +43,8 @@ type config struct {
 	// Tray icon overrides: RGB (0xRRGGBB); -1 = follow the active style.
 	TrayV, TrayVBg int // letter + badge fill of the "V" (Vietnamese on)
 	TrayE, TrayEBg int // letter + badge fill of the "E" (English)
+	// Accent override for the "Cơ bản" style only: RGB or -1 = palette jade.
+	Accent int
 }
 
 var cfg config

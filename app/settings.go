@@ -118,6 +118,7 @@ func formatSettingsIni() string {
 	fmt.Fprintf(&b, "TrayVBg=%d\n", cfg.TrayVBg)
 	fmt.Fprintf(&b, "TrayE=%d\n", cfg.TrayE)
 	fmt.Fprintf(&b, "TrayEBg=%d\n", cfg.TrayEBg)
+	fmt.Fprintf(&b, "Accent=%d\n", cfg.Accent)
 	names := make([]string, 0, len(gRememberedAppViet))
 	for name := range gRememberedAppViet {
 		names = append(names, name)
@@ -307,6 +308,10 @@ func loadSettings() bool {
 	}
 	if v, ok := getI("TrayEBg"); ok {
 		cfg.TrayEBg = v
+	}
+	cfg.Accent = -1
+	if v, ok := getI("Accent"); ok {
+		cfg.Accent = v
 	}
 	if migrated {
 		saveSettings()
