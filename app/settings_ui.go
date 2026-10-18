@@ -2295,6 +2295,7 @@ func settingsCommand(id int) {
 			rethemed = true
 			pDestroyWindow.Call(gSettingsHwnd)
 		}
+		return
 	case cAccentText:
 		seed := cfg.AccentText
 		if seed < 0 {
@@ -2313,7 +2314,6 @@ func settingsCommand(id int) {
 			rethemed = true
 			pDestroyWindow.Call(gSettingsHwnd)
 		}
-		return
 		return
 	case cThemeAuto, cThemeLight, cThemeDark:
 		newTheme := themeAuto
