@@ -1685,10 +1685,10 @@ func layoutAll() {
 	if ctlHnd[cAccent] != 0 {
 		accOff = dp(48)
 		place(stAccentLabel, cx+dp(16), ct+dp(218), cw-dp(32), dp(20))
-		aw := (cw - dp(32) - dp(8) - dp(80)) / 2
+		aw := dp(110)
 		place(cAccent, cx+dp(16), ct+dp(240), aw, dp(28))
 		place(cAccentText, cx+dp(16)+aw+dp(8), ct+dp(240), aw, dp(28))
-		place(cAccentReset, cx+cw-dp(16)-dp(72), ct+dp(240), dp(72), dp(28))
+		place(cAccentReset, cx+dp(24)+aw*2+dp(8), ct+dp(240), dp(72), dp(28))
 	}
 	place(stTraySection, cx+dp(16), ct+dp(248)+accOff, cw-dp(32), dp(20))
 	trayY := ct + dp(272) + accOff
