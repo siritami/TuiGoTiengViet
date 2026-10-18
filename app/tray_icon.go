@@ -16,8 +16,8 @@ func rgb2ref(rgb int) uintptr {
 // so the badge stays recognizable whatever UI theme is active.
 // cfg.Tray*/Tray*Bg (-1 = unset) are the user's overrides from Settings.
 const (
-	trayDefV    = 0xFFFFFF // V letter: white
-	trayDefVBg  = 0x3ED3B8 // V badge: luminous mint jade
+	trayDefV    = 0x197F64 // V letter: deep jade
+	trayDefVBg  = 0xFFFFFF // V badge: white
 	trayDefE    = 0x94A3B8 // E glyph: muted slate
 	trayDefEBg  = 0x1E293B // E badge: dark slate keycap
 	trayDefERim = 0x94A3B8
