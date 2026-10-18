@@ -1684,11 +1684,11 @@ func layoutAll() {
 	accOff := int32(0)
 	if ctlHnd[cAccent] != 0 {
 		accOff = dp(48)
-		place(stAccentLabel, cx+dp - dp(80)) / 2
+		place(stAccentLabel, cx+dp(16), ct+dp(218), cw-dp(32), dp(20))
+		aw := (cw - dp(32) - dp(8) - dp(80)) / 2
 		place(cAccent, cx+dp(16), ct+dp(240), aw, dp(28))
 		place(cAccentText, cx+dp(16)+aw+dp(8), ct+dp(240), aw, dp(28))
-		place(cAccentReset, cx+cw-dp(16)-dp(72), ct+dp(240), dp(72)
-		place(cAccentText, cx+dp(16)+aw+dp(8), ct+dp(240), aw, dp(28))
+		place(cAccentReset, cx+cw-dp(16)-dp(72), ct+dp(240), dp(72), dp(28))
 	}
 	place(stTraySection, cx+dp(16), ct+dp(248)+accOff, cw-dp(32), dp(20))
 	trayY := ct + dp(272) + accOff
@@ -2325,7 +2325,8 @@ func settingsCommand(id int) {
 			rethemed = true
 			pDestroyWindow.Call(gSettingsHwnd)
 		}
-		returAccentReset:
+		return
+	case cAccentReset:
 		if cfg.Accent >= 0 || cfg.AccentText >= 0 {
 			cfg.Accent, cfg.AccentText = -1, -1
 			saveSettings()
@@ -2333,7 +2334,6 @@ func settingsCommand(id int) {
 			pDestroyWindow.Call(gSettingsHwnd)
 		}
 		return
-	case cn
 	case cThemeAuto, cThemeLight, cThemeDark:
 		newTheme := themeAuto
 		switch id {
