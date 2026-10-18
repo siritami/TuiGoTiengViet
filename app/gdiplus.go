@@ -672,12 +672,7 @@ func (g *Gfx) DrawGlassPill(x, y, w, h, radius float32, isDark, active, hover bo
 			border = HexAlphaARGB(0xC0, accentRGB)
 			sheen = HexAlphaARGB(0xFF, 0xFFFFFF)
 		}
-		g.FillRouBasic:
-		// Cơ bản: flat solid background, no gradient, no ambient blooms.
-		colTop = HexAlphaARGB(0xFF, argbBg&0x00FFFFFF)
-		colBottom = colTop
-		glow1, glow2 = 0, 0
-	case stylendedRectGradient(x, y, w, h, radius, bgTop, bgBottom)
+		g.FillRoundedRectGradient(x, y, w, h, radius, bgTop, bgBottom)
 		g.DrawRoundedRect(x, y, w, h, radius, border, 1.1)
 		if radius > 2 && w > radius*2 {
 			g.DrawLine(x+radius*0.8, y+1.0, x+w-radius*0.8, y+1.0, sheen, 1.0)
@@ -693,6 +688,11 @@ func (g *Gfx) FillAtmosphericGlassBg(w, h float32, isDark bool) {
 
 	var colTop, colBottom, glow1, glow2 uint32
 	switch cfg.Style {
+	case styleBasic:
+		// Cơ bản: flat solid background, no gradient, no ambient blooms.
+		colTop = HexAlphaARGB(0xFF, argbBg&0x00FFFFFF)
+		colBottom = colTop
+		glow1, glow2 = 0, 0
 	case styleIosPure:
 		if isDark {
 			colTop = HexARGB(0x000000)
