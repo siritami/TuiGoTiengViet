@@ -2610,8 +2610,8 @@ func settingsProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 				drawSmoothThemeButton(di.hDC, di.rcItem, id, pressed)
 			case id == cThemeBasic || id == cThemeJade || id == cThemeIosPure || id == cThemeCyberNeon || id == cThemeMatchaLatte || id == cThemeMaterialTeal:
 				pressed := di.itemState&ODS_SELECTED != 0
-				drawSmoothStyleCard(di.hDC, di.rcItem, id, pressed) || id == cAccentText
-			case id == cTrayV || id == cTrayVBg || id == cTrayE || id == cTrayEBg || id == cAccent:
+				drawSmoothStyleCard(di.hDC, di.rcItem, id, pressed)
+			case id == cTrayV || id == cTrayVBg || id == cTrayE || id == cTrayEBg || id == cAccent || id == cAccentText:
 				pressed := di.itemState&ODS_SELECTED != 0
 				drawTraySwatch(di.hDC, di.rcItem, id, pressed)
 			case btnIDs[id]:
