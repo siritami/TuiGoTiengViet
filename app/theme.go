@@ -53,8 +53,8 @@ type palette struct {
 // translucency. Neutral Windows grays with the jade brand accent.
 var palBasicDark = palette{
 	bg:          0x202020, // #202020
-	card:        0x2B2B2B, // #2B2B2B
-	border:      0x404040, // #404040
+	card:        0x383838, // #383838 — matches Win32 dark-combo face tone
+	border:      0x4A4A4A, // #4A4A4A
 	text:        0xF0F0F0, // #F0F0F0
 	gold:        0xB8D33E, // #3ED3B8
 	amber:       0xB8D33E, // #3ED3B8
@@ -62,7 +62,7 @@ var palBasicDark = palette{
 	vermilion:   0x4444EF, // #EF4444
 	muted:       0xA0A0A0, // #A0A0A0
 	pill:        0x4A4A4A, // #4A4A4A
-	goldDim:     0x383838, // #383838
+	goldDim:     0x404040, // #404040
 	btnBg:       0x333333, // #333333
 	btnHover:    0x3D3D3D, // #3D3D3D
 	btnBorder:   0x4A4A4A, // #4A4A4A
@@ -71,8 +71,8 @@ var palBasicDark = palette{
 	navActiveBd: 0xB8D33E, // #3ED3B8
 
 	aBg:        0xFF202020,
-	aCard:      0xFF2B2B2B,
-	aBorder:    0xFF404040,
+	aCard:      0xFF383838,
+	aBorder:    0xFF4A4A4A,
 	aText:      0xFFF0F0F0,
 	aMuted:     0xFFA0A0A0,
 	aAccent:    0xFF3ED3B8,

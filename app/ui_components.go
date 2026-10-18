@@ -138,14 +138,10 @@ func drawSmoothCheckbox(dc uintptr, rc rect, id int, checked bool) {
 }
 
 // solidAccentSelected reports whether the active style draws a solid accent
-// fill under selected cards — text/icons on it must be accent-on (white or
-// dark ink), not colText/colGold, or they drown on the accent.
+// fill under selected cards. Only Cơ bản does — every other style uses a
+// translucent light tint where normal colText/colGold inks are correct.
 func solidAccentSelected() bool {
-	switch cfg.Style {
-	case styleBasic, styleIosPure, styleCyberNeon, styleMatchaLatte, styleMaterialTeal:
-		return true
-	}
-	return !isDark() // Ngọc Bích light also fills selected pills solid
+	return cfg.Style == styleBasic
 }
 
 // accentOnCol picks the ink that reads on top of argbAccent: white on the
@@ -255,6 +251,75 @@ func drawSmoothButton(dc uintptr, rc rect, id int, pressed bool) {
 	pDrawText.Call(dc, uintptr(unsafe.Pointer(utf16ptr(txt))),
 		^uintptr(0), uintptr(unsafe.Pointer(&trc)),
 		DT_CENTER|DT_VCENTER|DT_SINGLELINE)
+	pSelectObject.Call(dc, oldF)
+}
+
+// traySwatchColor resolves the effective RGB for a tray swatch button:
+// cfg value when set, else the fixed icon default.
+func traySwatchColor(id int) int {
+	switch id {
+	case cTrayV:
+		if cfg.TrayV >= 0 {
+			return cfg.TrayV
+		}
+		return trayDefV
+	case cTrayVBg:
+		if cfg.TrayVBg >= 0 {
+			return cfg.TrayVBg
+		}
+		return trayDefVBg
+	case cTrayE:
+		if cfg.TrayE >= 0 {
+			return cfg.TrayE
+		}
+		return trayDefE
+	case cTrayEBg:
+		if cfg.TrayEBg >= 0 {
+			return cfg.TrayEBg
+		}
+		return trayDefEBg
+	}
+	return 0
+}
+
+// drawTraySwatch renders a color-picker button: color square + label.
+func drawTraySwatch(dc uintptr, rc rect, id int, pressed bool) {
+	fillParentBg(dc, rc, ctlHnd[id])
+
+	gfx := NewGfx(dc)
+	if gfx == nil {
+		return
+	}
+	defer gfx.Destroy()
+
+	x, y, w, h := float32(rc.left), float32(rc.top), float32(rc.right-rc.left), float32(rc.bottom-rc.top)
+	r := float32(dp(8))
+	gfx.DrawGlassPill(x, y, w, h, r, isDark(), false, pressed)
+
+	// Color square
+	rgb := traySwatchColor(id)
+	argb := uint32(0xFF000000) | uint32(rgb)
+	sq := float32(dp(16))
+	sx := x + float32(dp(9))
+	sy := y + (h-sq)/2.0
+	gfx.FillRoundedRect(sx, sy, sq, sq, float32(dp(4)), argb)
+	gfx.DrawRoundedRect(sx, sy, sq, sq, float32(dp(4)), HexAlphaARGB(0xA0, argbBorder&0x00FFFFFF), 1.0)
+	if cfg.TrayV < 0 && id == cTrayV || cfg.TrayVBg < 0 && id == cTrayVBg ||
+		cfg.TrayE < 0 && id == cTrayE || cfg.TrayEBg < 0 && id == cTrayEBg {
+		// Unset — small "auto" dot so the user sees it follows the theme
+		gfx.FillCircle(sx+sq-float32(dp(2)), sy+float32(dp(2)), float32(dp(3)), argbMuted)
+	}
+
+	pSetBkMode.Call(dc, TRANSPARENT)
+	pSetTextColor.Call(dc, colText)
+	oldF, _, _ := pSelectObject.Call(dc, fontNormal)
+	trc := rect{rc.left + dp(30), rc.top, rc.right - dp(4), rc.bottom}
+	if pressed {
+		trc.top += dp(1)
+	}
+	pDrawText.Call(dc, uintptr(unsafe.Pointer(utf16ptr(btnText[id]))),
+		^uintptr(0), uintptr(unsafe.Pointer(&trc)),
+		DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX)
 	pSelectObject.Call(dc, oldF)
 }
 

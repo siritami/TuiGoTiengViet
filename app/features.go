@@ -40,6 +40,9 @@ type config struct {
 	Style           int  // 0=jade, 1=ios_pure, 2=cyber_neon, 3=matcha_latte, 4=material_teal
 	UILang          int  // 0=Tiếng Việt, 1=English
 	HudX, HudY      int
+	// Tray icon overrides: RGB (0xRRGGBB); -1 = follow the active style.
+	TrayV, TrayVBg int // letter + badge fill of the "V" (Vietnamese on)
+	TrayE, TrayEBg int // letter + badge fill of the "E" (English)
 }
 
 var cfg config

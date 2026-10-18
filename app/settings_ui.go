@@ -165,6 +165,7 @@ var (
 	stSwitchSection, stLbHotkey, stHotkeyHint, stFKeySection                                     int
 	stMacroSection, stMacroHint1, stMacroHint2                                                   int
 	stThemeModeSection, stStyleSection, stSysSection, stLbTheme, stExcludeSection, stExcludeHint int
+	stTraySection, stTrayHint                                                                 int
 )
 
 // control IDs
@@ -218,6 +219,11 @@ const (
 	cThemeMatchaLatte
 	cThemeMaterialTeal
 	cThemeBasic
+	cTrayV
+	cTrayVBg
+	cTrayE
+	cTrayEBg
+	cTrayReset
 )
 
 var imList = []int{ImTelex, ImTelexSimple, ImVni, ImViqr, ImTelexVni, ImMsVi, ImUsrKeymap}
@@ -546,9 +552,9 @@ func drawNavClipped(dc uintptr, clip rect) {
 			if gfx != nil {
 				gfx.DrawGlassPill(x, y, w, h, radius, dark, true, false)
 				// Left indicator bar in active style accent; on a solid-accent
-				// pill (Cơ bản / Ngọc Bích light) flip it to the on-accent ink.
+				// pill (Cơ bản) flip it to the on-accent ink.
 				barCol := argbAccent
-				if cfg.Style == styleBasic || (cfg.Style == styleJade && !dark) {
+				if cfg.Style == styleBasic {
 					barCol = 0xFFFFFFFF
 					if argbAccent&0x00FFFFFF == 0x3ED3B8 {
 						barCol = 0xFF0F1115
@@ -704,7 +710,7 @@ func drawNavClipped(dc uintptr, clip rect) {
 		descColor := colMuted
 		if active {
 			titleColor = colGold
-			if cfg.Style == styleBasic || (cfg.Style == styleJade && !dark) {
+			if cfg.Style == styleBasic {
 				// Pill is filled solid accent — draw ink on top of it
 				titleColor = 0xFFFFFF
 				descColor = 0xFFFFFF
@@ -783,9 +789,10 @@ func drawSettingsTab(dc uintptr, tab int, cx, ct, cw int32) {
 	case 3: // System & app exclusions
 		drawSettingsCard(dc, rect{cx, ct, cx + cw, ct + dp(214)})
 		drawSettingsCard(dc, rect{cx, ct + dp(226), cx + cw, ct + dp(374)})
-	case 4: // Appearance: color mode & theme style
+	case 4: // Appearance: color mode & theme style + tray icon customizer
 		drawSettingsCard(dc, rect{cx, ct, cx + cw, ct + dp(94)})
 		drawSettingsCard(dc, rect{cx, ct + dp(106), cx + cw, ct + dp(224)})
+		drawSettingsCard(dc, rect{cx, ct + dp(236), cx + cw, ct + dp(340)})
 	}
 }
 
@@ -1531,6 +1538,20 @@ func buildControls(h uintptr) {
 	mkCtl(h, ctlDef{cThemeCyberNeon, "BUTTON", BS_OWNERDRAW | WS_TABSTOP, "Cyber Neon", 0, 0, 10, 10})
 	mkCtl(h, ctlDef{cThemeMatchaLatte, "BUTTON", BS_OWNERDRAW | WS_TABSTOP, "Matcha Latte", 0, 0, 10, 10})
 	mkCtl(h, ctlDef{cThemeMaterialTeal, "BUTTON", BS_OWNERDRAW | WS_TABSTOP, "Material 3", 0, 0, 10, 10})
+	stTraySection = addSection(tr("BIỂU TƯỢNG KHAY HỆ THỐNG", "TRAY ICON"))
+	for _, tid := range []int{cTrayV, cTrayVBg, cTrayE, cTrayEBg} {
+		btnIDs[tid] = true
+	}
+	mkCtl(h, ctlDef{cTrayV, "BUTTON", BS_OWNERDRAW | WS_TABSTOP, "", 0, 0, 10, 10})
+	mkCtl(h, ctlDef{cTrayVBg, "BUTTON", BS_OWNERDRAW | WS_TABSTOP, "", 0, 0, 10, 10})
+	mkCtl(h, ctlDef{cTrayE, "BUTTON", BS_OWNERDRAW | WS_TABSTOP, "", 0, 0, 10, 10})
+	mkCtl(h, ctlDef{cTrayEBg, "BUTTON", BS_OWNERDRAW | WS_TABSTOP, "", 0, 0, 10, 10})
+	btnText[cTrayV] = tr("Chữ V", "V letter")
+	btnText[cTrayVBg] = tr("Nền V", "V bg")
+	btnText[cTrayE] = tr("Chữ E", "E letter")
+	btnText[cTrayEBg] = tr("Nền E", "E bg")
+	addBtn(cTrayReset, tr("Mặc định", "Reset"))
+	stTrayHint = addHint(tr("Bấm ô màu để đổi màu biểu tượng khay V/E", "Click a swatch to recolor the V/E tray icon"))
 
 	// ---- Tab 5: Giới thiệu ----
 	curTab = 5
@@ -1648,6 +1669,16 @@ func layoutAll() {
 		}
 		place(tid, tx, ct+dp(146), tw, dp(64))
 	}
+	place(stTraySection, cx+dp(16), ct+dp(248), cw-dp(32), dp(20))
+	trayY := ct + dp(272)
+	trayW := (cw - dp(32) - dp(16) - 3*dp(8) - dp(80)) / 4
+	trayIDs := []int{cTrayV, cTrayVBg, cTrayE, cTrayEBg}
+	for i, id := range trayIDs {
+		tx := cx + dp(16) + int32(i)*(trayW+dp(8))
+		place(id, tx, trayY, trayW, dp(34))
+	}
+	place(cTrayReset, cx+cw-dp(16)-dp(72), trayY, dp(72), dp(34))
+	place(stTrayHint, cx+dp(16), ct+dp(310), cw-dp(32), dp(20))
 
 	// Tab 5 — Giới thiệu (button sits inside the second card)
 	place(cUpdateBtn, cx+cw-dp(20)-dp(170), ct+dp(317), dp(170), dp(32))
@@ -1950,6 +1981,45 @@ func utf16buf(s string) *uint16 {
 }
 
 var pGetOpenFileName = comdlg32.NewProc("GetOpenFileNameW")
+var pChooseColor = comdlg32.NewProc("ChooseColorW")
+
+// chooseColorW mirrors Win32 CHOOSECOLORW (36 bytes on 64-bit).
+type chooseColorW struct {
+	lStructSize  uint32
+	hwndOwner    uintptr
+	hInstance    uintptr
+	rgbResult    uint32
+	lpCustColors *uint32
+	flags        uint32
+	lCustData    uintptr
+	lpfnHook     uintptr
+	lpTemplate   *uint16
+}
+
+var gCustColors [16]uint32 // custom-color slots persist for the session
+
+// pickColor opens the standard color dialog seeded with the given RGB
+// (0xRRGGBB). Returns the chosen RGB and false on cancel.
+func pickColor(seed int) (int, bool) {
+	cc := chooseColorW{
+		lStructSize:  uint32(unsafe.Sizeof(chooseColorW{})),
+		hwndOwner:    gSettingsHwnd,
+		lpCustColors: &gCustColors[0],
+		flags:        0x0001 | 0x0002, // CC_INIT | CC_FULLOPEN
+	}
+	if seed >= 0 {
+		cc.rgbResult = uint32(rgb2ref(seed))
+	} else {
+		cc.flags &^= 0x0001
+	}
+	r, _, _ := pChooseColor.Call(uintptr(unsafe.Pointer(&cc)))
+	if r == 0 {
+		return 0, false
+	}
+	// ChooseColor returns COLORREF (BGR) — flip back to stored RGB.
+	c := int(cc.rgbResult)
+	return (c&0xFF)<<16 | (c & 0xFF00) | (c>>16)&0xFF, true
+}
 
 func browseExe() string {
 	var buf [1024]uint16
@@ -2175,6 +2245,35 @@ func settingsCommand(id int) {
 	case cExcludeEdit:
 		editFile("exclude.txt")
 		loadExclusions(exeDir())
+	case cTrayV, cTrayVBg, cTrayE, cTrayEBg:
+		slot := &cfg.TrayV
+		seed := cfg.TrayV
+		switch id {
+		case cTrayVBg:
+			slot, seed = &cfg.TrayVBg, cfg.TrayVBg
+		case cTrayE:
+			slot, seed = &cfg.TrayE, cfg.TrayE
+		case cTrayEBg:
+			slot, seed = &cfg.TrayEBg, cfg.TrayEBg
+		}
+		if seed < 0 {
+			seed = traySwatchColor(id) // start picker at the effective color
+		}
+		if rgb, ok := pickColor(seed); ok {
+			*slot = rgb
+			saveSettings()
+			syncTrayState()
+			pInvalidateRect.Call(ctlHnd[id], 0, 1)
+		}
+		return
+	case cTrayReset:
+		cfg.TrayV, cfg.TrayVBg, cfg.TrayE, cfg.TrayEBg = -1, -1, -1, -1
+		saveSettings()
+		syncTrayState()
+		for _, tid := range []int{cTrayV, cTrayVBg, cTrayE, cTrayEBg} {
+			pInvalidateRect.Call(ctlHnd[tid], 0, 1)
+		}
+		return
 	case cThemeAuto, cThemeLight, cThemeDark:
 		newTheme := themeAuto
 		switch id {
@@ -2471,6 +2570,9 @@ func settingsProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 			case id == cThemeBasic || id == cThemeJade || id == cThemeIosPure || id == cThemeCyberNeon || id == cThemeMatchaLatte || id == cThemeMaterialTeal:
 				pressed := di.itemState&ODS_SELECTED != 0
 				drawSmoothStyleCard(di.hDC, di.rcItem, id, pressed)
+			case id == cTrayV || id == cTrayVBg || id == cTrayE || id == cTrayEBg:
+				pressed := di.itemState&ODS_SELECTED != 0
+				drawTraySwatch(di.hDC, di.rcItem, id, pressed)
 			case btnIDs[id]:
 				pressed := di.itemState&ODS_SELECTED != 0
 				drawSmoothButton(di.hDC, di.rcItem, id, pressed)

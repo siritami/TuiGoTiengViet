@@ -114,6 +114,10 @@ func formatSettingsIni() string {
 	fmt.Fprintf(&b, "UILang=%d\n", cfg.UILang)
 	fmt.Fprintf(&b, "HudX=%d\n", cfg.HudX)
 	fmt.Fprintf(&b, "HudY=%d\n", cfg.HudY)
+	fmt.Fprintf(&b, "TrayV=%d\n", cfg.TrayV)
+	fmt.Fprintf(&b, "TrayVBg=%d\n", cfg.TrayVBg)
+	fmt.Fprintf(&b, "TrayE=%d\n", cfg.TrayE)
+	fmt.Fprintf(&b, "TrayEBg=%d\n", cfg.TrayEBg)
 	names := make([]string, 0, len(gRememberedAppViet))
 	for name := range gRememberedAppViet {
 		names = append(names, name)
@@ -290,6 +294,19 @@ func loadSettings() bool {
 	}
 	if v, ok := getI("HudY"); ok {
 		cfg.HudY = v
+	}
+	cfg.TrayV, cfg.TrayVBg, cfg.TrayE, cfg.TrayEBg = -1, -1, -1, -1
+	if v, ok := getI("TrayV"); ok {
+		cfg.TrayV = v
+	}
+	if v, ok := getI("TrayVBg"); ok {
+		cfg.TrayVBg = v
+	}
+	if v, ok := getI("TrayE"); ok {
+		cfg.TrayE = v
+	}
+	if v, ok := getI("TrayEBg"); ok {
+		cfg.TrayEBg = v
 	}
 	if migrated {
 		saveSettings()
