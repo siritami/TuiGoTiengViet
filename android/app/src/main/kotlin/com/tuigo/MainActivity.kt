@@ -114,7 +114,6 @@ class MainActivity : Activity() {
                 addView(toggle("Viết hoa kí tự đầu tiên", "Tự bật Shift ở đầu câu", Prefs.KEY_AUTO_CAPITALIZE))
                 addView(toggle("Hai lần Space → dấu chấm", "Kết thúc câu nhanh", Prefs.KEY_DOUBLE_SPACE))
                 addView(toggle("Giữ phím xoá để bôi chữ", "Giữ Backspace để bôi đen chữ về bên trái, thả ra để dừng", Prefs.KEY_HOLD_DEL_SELECT, false))
-                addView(toggle("Phím emoji", "Thêm phím 😊 cạnh dấu phẩy để mở bảng emoji", Prefs.KEY_EMOJI_KEY, false))
                 addView(toggle("Rung khi nhấn phím", "Phản hồi rung nhẹ mỗi lần gõ", Prefs.KEY_HAPTIC))
                 addView(toggle("Popup phím khi nhấn", "Hiện bản phóng to phím đang bấm", Prefs.KEY_KEY_POPUP))
             })

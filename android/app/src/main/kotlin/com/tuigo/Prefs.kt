@@ -29,7 +29,6 @@ object Prefs {
     const val KEY_LAND_SPLIT = "land_split"
     const val KEY_LAND_SPLIT_GAP = "land_split_gap"
     const val KEY_HOLD_DEL_SELECT = "hold_del_select"
-    const val KEY_EMOJI_KEY = "emoji_key"
     const val KEY_HAPTIC = "haptic_feedback"
     const val KEY_KEY_POPUP = "key_popup"
     const val KEY_KEY_GAP = "key_gap"
@@ -126,7 +125,6 @@ object Prefs {
     fun landSplitGapDp(ctx: Context): Int = get(ctx).getInt(KEY_LAND_SPLIT_GAP, 40)
     /** Hold Backspace → extend selection leftward until release (Gboard-style). */
     fun holdDelSelect(ctx: Context): Boolean = get(ctx).getBoolean(KEY_HOLD_DEL_SELECT, false)
-    fun emojiKey(ctx: Context): Boolean = get(ctx).getBoolean(KEY_EMOJI_KEY, false)
     fun haptic(ctx: Context): Boolean = get(ctx).getBoolean(KEY_HAPTIC, true)
     fun keyPopup(ctx: Context): Boolean = get(ctx).getBoolean(KEY_KEY_POPUP, true)
     fun keyGapDp(ctx: Context): Int = get(ctx).getInt(KEY_KEY_GAP, 4)

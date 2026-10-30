@@ -84,7 +84,6 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
                 keyboard.showNumberRow = usesNumberRow()
                 keyboard.landscapeSplit = Prefs.landSplit(this)
                 keyboard.holdDeleteSelect = Prefs.holdDelSelect(this)
-                keyboard.emojiEnabled = Prefs.emojiKey(this)
                 keyboard.hapticEnabled = Prefs.haptic(this)
                 keyboard.popupEnabled = Prefs.keyPopup(this)
                 keyboard.setMetrics(Prefs.keyHeightDp(this), Prefs.keyGapDp(this), Prefs.landKeyHeightDp(this), Prefs.landSplitGapDp(this))
@@ -112,7 +111,6 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
     private var spacePopup: PopupWindow? = null
 
     /** Inline-autofill & clipboard suggestion strip (Gboard-style chips above the keys). */
-    private var emojiPanel: androidx.emoji2.emojipicker.EmojiPickerView? = null
     private var suggestionBar: android.widget.FrameLayout? = null
     private var suggestionScroll: HorizontalScrollView? = null
     private var suggestionSurface: SurfaceView? = null
@@ -227,7 +225,6 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         keyboard.showNumberRow = usesNumberRow()
         keyboard.landscapeSplit = Prefs.landSplit(this)
         keyboard.holdDeleteSelect = Prefs.holdDelSelect(this)
-        keyboard.emojiEnabled = Prefs.emojiKey(this)
         keyboard.hapticEnabled = Prefs.haptic(this)
         keyboard.popupEnabled = Prefs.keyPopup(this)
         keyboard.setMetrics(Prefs.keyHeightDp(this), Prefs.keyGapDp(this), Prefs.landKeyHeightDp(this), Prefs.landSplitGapDp(this))
@@ -272,38 +269,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
                     addView(pinnedHost, LinearLayout.LayoutParams(-2, -1))
                 }, android.widget.FrameLayout.LayoutParams(-1, -1))
             }, LinearLayout.LayoutParams(-1, stripH))
-            addView(android.widget.FrameLayout(this@TuiGoImeService).apply {
-                addView(keyboard, android.widget.FrameLayout.LayoutParams(-1, -2))
-                val picker = androidx.emoji2.emojipicker.EmojiPickerView(this@TuiGoImeService).apply {
-                    emojiGridColumns = 9
-                    emojiGridRows = 3f
-                    setOnEmojiPickedListener { emoji -> onText(emoji.toString()) }
-                    visibility = View.GONE
-                    setBackgroundColor(keyboard.theme.bg)
-                }
-                emojiPanel = picker
-                addView(picker, android.widget.FrameLayout.LayoutParams(-1, -2).apply {
-                    gravity = Gravity.TOP
-                })
-            }, LinearLayout.LayoutParams(-1, -2))
-        }
-    }
-
-    /** Show/hide the system emoji panel above the keyboard's bottom row. */
-    override fun onEmojiToggle(showing: Boolean) {
-        val picker = emojiPanel ?: return
-        if (showing) {
-            picker.setBackgroundColor(keyboard.theme.bg)
-            // Cover the letter rows; leave the bottom row (ABC, space, ⌫) free.
-            val lp = picker.layoutParams as? android.widget.FrameLayout.LayoutParams
-            val h = keyboard.lastRowTopPx().toInt()
-            if (lp != null && lp.height != h && h > 0) {
-                lp.height = h
-                picker.layoutParams = lp
-            }
-            picker.visibility = View.VISIBLE
-        } else {
-            picker.visibility = View.GONE
+            addView(keyboard, LinearLayout.LayoutParams(-1, -2))
         }
     }
 
@@ -336,9 +302,9 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         keyboard.vniMode = Prefs.inputMethod(this) == ImVni
         keyboard.showNumberRow = usesNumberRow()
         keyboard.numericLayout = numericLayoutFor(info)
+        keyboard.resetPage()
         keyboard.landscapeSplit = Prefs.landSplit(this)
         keyboard.holdDeleteSelect = Prefs.holdDelSelect(this)
-        keyboard.emojiEnabled = Prefs.emojiKey(this)
         keyboard.hapticEnabled = Prefs.haptic(this)
         keyboard.popupEnabled = Prefs.keyPopup(this)
         keyboard.setMetrics(Prefs.keyHeightDp(this), Prefs.keyGapDp(this), Prefs.landKeyHeightDp(this), Prefs.landSplitGapDp(this))
@@ -378,7 +344,6 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
 
     override fun onFinishInputView(finishingInput: Boolean) {
         super.onFinishInputView(finishingInput)
-        emojiPanel?.visibility = View.GONE
         clearInlineSuggestions()
         clipPanel?.dismiss()
         spacePopup?.dismiss()
@@ -567,19 +532,6 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         selStart = selectEdge
         selEnd = selectAnchor
         expectedSel = selectEdge
-    }
-
-    /** Emoji commit — bypasses the engine (no tone-mark processing). */
-    override fun onText(text: String) {
-        val ic = currentInputConnection ?: return
-        dismissCurrentClipSuggestion()
-        engine.resetBuf()
-        spacePending = false
-        selectAnchor = -1
-        selectEdge = -1
-        ic.commitText(text, 1)
-        bumpExpected(text.length)
-        scheduleAutoCapitalizationUpdate()
     }
 
     override fun onEnter() {

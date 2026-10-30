@@ -46,10 +46,6 @@ class KeyboardView @JvmOverloads constructor(
         fun onSpaceMenu() {}
         /** Extend the selection one char leftward (hold-Backspace select mode). */
         fun onSelectLeft() {}
-        /** Commit a multi-char string (emoji). Bypasses the engine. */
-        fun onText(text: String) {}
-        /** Emoji key tapped — service shows/hides the system emoji panel. */
-        fun onEmojiToggle(showing: Boolean) {}
         fun onHideKeyboard() {}
         fun onCursorMove(delta: Int) {}
     }
@@ -88,6 +84,15 @@ class KeyboardView @JvmOverloads constructor(
         private set
     private var symbolLevel = 0
 
+    /** Back to the letter page — called when the keyboard opens so a new
+     *  field never starts on the symbols page. */
+    fun resetPage() {
+        symbolsPage = false
+        symbolLevel = 0
+        rows = currentRows()
+        relayout()
+    }
+
     /** Split the letter rows into left/right halves in landscape. */
     var landscapeSplit = true
         set(v) {
@@ -110,19 +115,6 @@ class KeyboardView @JvmOverloads constructor(
     /** Show the key popup preview on press. */
     var popupEnabled = true
 
-    /** Show an emoji key right of ","; tapping it opens the emoji page. */
-    var emojiEnabled = false
-        set(v) {
-            if (field == v) return
-            field = v
-            if (!v) emojiPage = false
-            rows = currentRows()
-            relayout()
-            requestLayout()
-        }
-
-    var emojiPage = false
-        private set
 
     /** Number row above letters — needed by VNI-style input methods
      *  (digits double as tone marks). */
@@ -143,7 +135,6 @@ class KeyboardView @JvmOverloads constructor(
             if (field == v) return
             field = v
             symbolsPage = false
-            emojiPage = false
             symbolLevel = 0
             rows = currentRows()
             relayout()
@@ -170,7 +161,6 @@ class KeyboardView @JvmOverloads constructor(
     // ---- layout model ------------------------------------------------------
 
     private object K {
-        const val EMOJI = -12
         const val NUM_SPACE = -11
         const val MORE = -10
         const val IME = -9
@@ -230,20 +220,14 @@ class KeyboardView @JvmOverloads constructor(
         } else keys.toTypedArray()
     }
 
-    /** Bottom row shared by every page; emoji key appears next to "," when
-     *  the emoji setting is on. `delInsteadOfEnter` swaps ⏎ for ⌫ (emoji page
-     *  keeps delete reachable while the picker covers the letter rows). */
-    private fun bottomRow(modeLabel: String, delInsteadOfEnter: Boolean = false): Array<KeySpec> {
-        val keys = mutableListOf(
-            KeySpec(K.MODE, modeLabel, 1.5f),
-            KeySpec(','.code, ",", 1.1f),
-        )
-        if (emojiEnabled) keys += KeySpec(K.EMOJI, "😊", 0.9f)
-        keys += KeySpec(K.SPACE, "Tiếng Việt", if (emojiEnabled) 5.0f else 5.9f)
-        keys += KeySpec('.'.code, ".", 1.3f)
-        keys += if (delInsteadOfEnter) KeySpec(K.DEL, "⌫", 1.5f) else KeySpec(K.ENTER, "⏎", 1.5f)
-        return keys.toTypedArray()
-    }
+    /** Bottom row shared by every page. */
+    private fun bottomRow(modeLabel: String): Array<KeySpec> = arrayOf(
+        KeySpec(K.MODE, modeLabel, 1.7f),
+        KeySpec(','.code, ",", 1.1f),
+        KeySpec(K.SPACE, "Tiếng Việt", 5.7f),
+        KeySpec('.'.code, ".", 1.1f),
+        KeySpec(K.ENTER, "⏎", 1.5f),
+    )
 
     private fun buildLettersRows(): Array<Array<KeySpec>> = arrayOf(
         row("qwertyuiop", withLetterHints = true),
@@ -284,9 +268,6 @@ class KeyboardView @JvmOverloads constructor(
         )
     }
 
-    // Emoji picker is the androidx EmojiPickerView hosted by the IME service —
-    // the canvas page only tracks whether it is currently showing.
-
     private fun buildNumberRow(): Array<KeySpec> =
         "1234567890".map { ch ->
             val vniHint = if (vniMode && vietnameseOn) vniNumberHints[ch] ?: "" else ""
@@ -310,7 +291,6 @@ class KeyboardView @JvmOverloads constructor(
 
     private fun currentRows(): Array<Array<KeySpec>> =
         if (numericLayout != NumericLayout.NONE) numPadRows(numericLayout)
-        else if (emojiPage) arrayOf(*buildLettersRows().copyOfRange(0, 3), bottomRow("ABC", delInsteadOfEnter = true))
         else if (symbolsPage) arrayOf(*when (symbolLevel) { 1 -> extraSymbolRows; 2 -> legacySymbolRows; else -> symbolsRows }, bottomRow("ABC"))
         else if (showNumberRow) arrayOf(buildNumberRow(), *buildLettersRows())
         else buildLettersRows()
@@ -570,11 +550,6 @@ class KeyboardView @JvmOverloads constructor(
         relayout()
     }
 
-    /** Y (px) of the last row's top edge — the emoji panel overlays everything
-     *  above this so the bottom row (ABC / Space / ⌫… wait, ⌫ is row 3)
-     *  stays reachable while the picker is open. */
-    fun lastRowTopPx(): Float =
-        padTop + (rows.size - 1) * (keyHeight + rowGap)
 
     private fun relayout() {
         keys.clear()
@@ -691,7 +666,7 @@ class KeyboardView @JvmOverloads constructor(
                 iconPaint.color = if (isPressed) pressedGlyph(t.funcText) else t.funcText
                 drawDeleteIcon(canvas, r)
             }
-            K.MODE, K.MORE, K.NUM_SPACE, K.EMOJI -> {
+            K.MODE, K.MORE, K.NUM_SPACE -> {
                 cap(if (isPressed) (if (t.pressAccent) t.accent else t.funcPressed) else t.func)
                 textPaint.color = if (isPressed) pressedGlyph(t.funcText) else t.funcText
                 textPaint.textSize = if (spec.code == K.NUM_SPACE) 19 * dp else 14 * dp
@@ -1032,12 +1007,7 @@ class KeyboardView @JvmOverloads constructor(
             K.DEL, K.SPACER -> {} // delete fires on down/repeat
             K.MODE -> {
                 val previousCount = rows.size
-                if (emojiPage) {
-                    emojiPage = false
-                    listener?.onEmojiToggle(false)
-                } else {
-                    symbolsPage = !symbolsPage
-                }
+                symbolsPage = !symbolsPage
                 symbolLevel = 0
                 rows = currentRows()
                 relayout()
@@ -1058,16 +1028,9 @@ class KeyboardView @JvmOverloads constructor(
             }
             K.HIDE -> listener?.onHideKeyboard()
             K.IME -> listener?.onSwitchIme()
-            K.EMOJI -> {
-                emojiPage = !emojiPage
-                rows = currentRows()
-                relayout()
-                listener?.onEmojiToggle(emojiPage)
-            }
             else -> {
                 manualShift = false
-                if (emojiPage) listener?.onText(key.spec.label)
-                else listener?.onChar(currentLabel(key.spec).first())
+                listener?.onChar(currentLabel(key.spec).first())
                 if (shifted && !capsLock) {
                     shifted = false
                     listener?.onShiftChanged(false, false)
