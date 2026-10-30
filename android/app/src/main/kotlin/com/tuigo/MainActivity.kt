@@ -23,6 +23,12 @@ class MainActivity : Activity() {
         selectedTab = savedInstanceState?.getInt("selected_tab", 0) ?: 0
         ui = MobileUi(this)
         val p = Prefs.get(this)
+        // Voice input needs mic access — ask once when the toggle is on.
+        if (Prefs.voiceButton(this) &&
+            checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 1)
+        }
         val root = ui.column()
         root.addView(ui.text("GÕ THEO CÁCH CỦA BẠN", 11f, ui.pal.accent, true))
         val versionName = try {
@@ -116,6 +122,7 @@ class MainActivity : Activity() {
                 addView(toggle("Giữ phím xoá để bôi chữ", "Giữ Backspace để bôi đen chữ về bên trái, thả ra để dừng", Prefs.KEY_HOLD_DEL_SELECT, false))
                 addView(toggle("Rung khi nhấn phím", "Phản hồi rung nhẹ mỗi lần gõ", Prefs.KEY_HAPTIC))
                 addView(toggle("Popup phím khi nhấn", "Hiện bản phóng to phím đang bấm", Prefs.KEY_KEY_POPUP))
+                addView(toggle("Nút micro trên thanh gợi ý", "Nhấn để nhập bằng giọng nói", Prefs.KEY_VOICE_BTN))
             })
             addView(ui.card("Thử bàn phím", "Gõ thử tiếng Việt hoặc từ gõ tắt ngay tại đây").apply {
                 addView(ui.editor("Ví dụ: tieengs Vieetj", false).apply { tag = "typing-preview" })

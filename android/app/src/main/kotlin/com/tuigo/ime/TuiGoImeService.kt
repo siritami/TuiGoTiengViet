@@ -116,6 +116,10 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
     private var suggestionSurface: SurfaceView? = null
     private var suggestionStrip: FlexboxLayout? = null
     private var pinnedSuggestionHost: android.widget.FrameLayout? = null
+    private var voiceHost: android.widget.FrameLayout? = null
+    private var voiceBtn: ImageView? = null
+    private var speechRecognizer: android.speech.SpeechRecognizer? = null
+    private var voiceListening = false
     private val scrollableInlineViews = mutableListOf<InlineContentView>()
     private var renderedClipKey: String? = null
     private var renderedHistoryOn = false
@@ -180,6 +184,8 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
     }
 
     override fun onDestroy() {
+        try { speechRecognizer?.destroy() } catch (_: Exception) { }
+        speechRecognizer = null
         clipboardManager?.removePrimaryClipChangedListener(clipChangedListener)
         Prefs.get(this).unregisterOnSharedPreferenceChangeListener(preferenceListener)
         super.onDestroy()
@@ -251,6 +257,21 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         suggestionSurface = surface
         val pinnedHost = android.widget.FrameLayout(this)
         pinnedSuggestionHost = pinnedHost
+        // Mic button pinned at the right edge of the strip — hidden while an
+        // inline-autofill suggestion occupies the bar.
+        val mic = ImageView(this).apply {
+            setImageResource(R.drawable.ic_mic)
+            imageTintList = ColorStateList.valueOf(keyboard.theme.funcText)
+            contentDescription = "Voice input"
+            setOnClickListener { toggleVoiceInput() }
+        }
+        voiceBtn = mic
+        val voiceHostView = android.widget.FrameLayout(this).apply {
+            addView(mic, android.widget.FrameLayout.LayoutParams(
+                (34 * dm).toInt(), (34 * dm).toInt(), Gravity.CENTER))
+            setPadding((4 * dm).toInt(), 0, (8 * dm).toInt(), 0)
+        }
+        voiceHost = voiceHostView
         // Fixed row height (40dp) matching Fcitx inline suggestion bar.
         // The whole bar starts hidden — showing the container while the inner
         // scroll is GONE leaves a blank strip above the keys.
@@ -267,6 +288,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
                         addView(surface, android.widget.FrameLayout.LayoutParams(-1, -1))
                     }, LinearLayout.LayoutParams(0, -1, 1f))
                     addView(pinnedHost, LinearLayout.LayoutParams(-2, -1))
+                    addView(voiceHostView, LinearLayout.LayoutParams(-2, -1))
                 }, android.widget.FrameLayout.LayoutParams(-1, -1))
             }, LinearLayout.LayoutParams(-1, stripH))
             addView(keyboard, LinearLayout.LayoutParams(-1, -2))
@@ -309,6 +331,8 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         keyboard.popupEnabled = Prefs.keyPopup(this)
         keyboard.setMetrics(Prefs.keyHeightDp(this), Prefs.keyGapDp(this), Prefs.landKeyHeightDp(this), Prefs.landSplitGapDp(this))
         suggestionScroll?.setBackgroundColor(keyboard.theme.bg)
+        voiceBtn?.imageTintList = ColorStateList.valueOf(
+            if (voiceListening) keyboard.theme.accent else keyboard.theme.funcText)
         renderSuggestionStrip()
         engine.resetBuf()
         ownSelEchoes.clear()
@@ -534,6 +558,100 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         expectedSel = selectEdge
     }
 
+    // ---- voice input --------------------------------------------------------
+
+    /** Commit a voice-recognition string (partial or final). Partials replace
+     *  the previous partial via composing text; finals commit. */
+    private var voicePartialLen = 0
+
+    private fun commitVoice(text: String, final: Boolean) {
+        val ic = currentInputConnection ?: return
+        if (final) {
+            ic.finishComposingText()
+            ic.commitText(text, 1)
+            voicePartialLen = 0
+            bumpExpected(text.length)
+        } else {
+            // Replace the previous partial — it sits before the cursor.
+            if (voicePartialLen > 0) ic.deleteSurroundingText(voicePartialLen, 0)
+            ic.setComposingText(text, 1)
+            voicePartialLen = text.length
+        }
+    }
+
+    private fun toggleVoiceInput() {
+        if (voiceListening) {
+            stopVoiceInput()
+            return
+        }
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            // Permission is requested from the settings app — nothing we can
+            // do from inside the IME window.
+            return
+        }
+        if (!android.speech.SpeechRecognizer.isRecognitionAvailable(this)) return
+        val recognizer = speechRecognizer
+            ?: android.speech.SpeechRecognizer.createSpeechRecognizer(this).also {
+                speechRecognizer = it
+            }
+        recognizer.setRecognitionListener(object : android.speech.RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {}
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {}
+            override fun onError(error: Int) { stopVoiceUi() }
+            override fun onResults(results: Bundle?) {
+                val text = results
+                    ?.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION)
+                    ?.firstOrNull()
+                if (!text.isNullOrEmpty()) {
+                    engine.resetBuf()
+                    spacePending = false
+                    commitVoice(text, final = true)
+                }
+                stopVoiceUi()
+            }
+            override fun onPartialResults(partialResults: Bundle?) {
+                val text = partialResults
+                    ?.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION)
+                    ?.firstOrNull()
+                if (!text.isNullOrEmpty()) commitVoice(text, final = false)
+            }
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+        val intent = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(android.speech.RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+        }
+        voiceListening = true
+        voiceBtn?.imageTintList = ColorStateList.valueOf(keyboard.theme.accent)
+        recognizer.startListening(intent)
+    }
+
+    private fun stopVoiceUi() {
+        voiceListening = false
+        voiceBtn?.imageTintList = ColorStateList.valueOf(keyboard.theme.funcText)
+    }
+
+    private fun stopVoiceInput() {
+        voiceListening = false
+        try { speechRecognizer?.stopListening() } catch (_: Exception) { }
+        if (voicePartialLen > 0) {
+            // Keep the last partial as committed text.
+            val ic = currentInputConnection
+            ic?.finishComposingText()
+            if (voicePartialLen > 0) {
+                ic?.deleteSurroundingText(0, 0)
+                bumpExpected(0)
+            }
+            voicePartialLen = 0
+        }
+        stopVoiceUi()
+    }
+
     override fun onEnter() {
         selectAnchor = -1
         selectEdge = -1
@@ -741,6 +859,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
     private fun clearInlineSuggestions() {
         inlineGeneration++
         hasInlineSuggestions = false
+        syncSuggestionBarVisibility()
         val scroll = suggestionScroll
         scroll?.scrollTo(0, 0)
         scroll?.removeAllViews()
@@ -761,10 +880,18 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         renderedTheme = null
     }
 
+    /** Mic hidden while an inline-autofill suggestion owns the strip, in
+     *  password fields, or when the user disabled it in settings. */
+    private fun voiceButtonAllowed(): Boolean =
+        Prefs.voiceButton(this) && !hasInlineSuggestions &&
+            !isPasswordField(currentInputEditorInfo)
+
     /** Show the suggestion bar only when some chip row is actually visible. */
     private fun syncSuggestionBarVisibility() {
+        voiceHost?.visibility = if (voiceButtonAllowed()) View.VISIBLE else View.GONE
         val hasContent = suggestionScroll?.visibility == View.VISIBLE ||
-            (pinnedSuggestionHost?.childCount ?: 0) > 0
+            (pinnedSuggestionHost?.childCount ?: 0) > 0 ||
+            voiceHost?.visibility == View.VISIBLE
         suggestionBar?.visibility = if (hasContent) View.VISIBLE else View.GONE
     }
 
@@ -1223,6 +1350,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
     ) {
         if (generation != inlineGeneration) return
         hasInlineSuggestions = true
+        syncSuggestionBarVisibility()
 
         if (suggestions.isEmpty()) {
             clearInlineSuggestions()

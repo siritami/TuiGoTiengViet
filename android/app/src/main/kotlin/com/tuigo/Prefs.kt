@@ -31,6 +31,7 @@ object Prefs {
     const val KEY_HOLD_DEL_SELECT = "hold_del_select"
     const val KEY_HAPTIC = "haptic_feedback"
     const val KEY_KEY_POPUP = "key_popup"
+    const val KEY_VOICE_BTN = "voice_button"
     const val KEY_KEY_GAP = "key_gap"
     const val KEY_THEME = "key_theme"
     const val KEY_CLIPBOARD_SUGGEST = "clipboard_suggest"
@@ -127,6 +128,7 @@ object Prefs {
     fun holdDelSelect(ctx: Context): Boolean = get(ctx).getBoolean(KEY_HOLD_DEL_SELECT, false)
     fun haptic(ctx: Context): Boolean = get(ctx).getBoolean(KEY_HAPTIC, true)
     fun keyPopup(ctx: Context): Boolean = get(ctx).getBoolean(KEY_KEY_POPUP, true)
+    fun voiceButton(ctx: Context): Boolean = get(ctx).getBoolean(KEY_VOICE_BTN, true)
     fun keyGapDp(ctx: Context): Int = get(ctx).getInt(KEY_KEY_GAP, 4)
 
     // ---- per-app language memory -------------------------------------------
