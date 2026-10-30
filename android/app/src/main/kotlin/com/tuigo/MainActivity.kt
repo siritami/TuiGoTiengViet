@@ -115,6 +115,8 @@ class MainActivity : Activity() {
                 addView(toggle("Hai lần Space → dấu chấm", "Kết thúc câu nhanh", Prefs.KEY_DOUBLE_SPACE))
                 addView(toggle("Giữ phím xoá để bôi chữ", "Giữ Backspace để bôi đen chữ về bên trái, thả ra để dừng", Prefs.KEY_HOLD_DEL_SELECT, false))
                 addView(toggle("Phím emoji", "Thêm phím 😊 cạnh dấu phẩy để mở bảng emoji", Prefs.KEY_EMOJI_KEY, false))
+                addView(toggle("Rung khi nhấn phím", "Phản hồi rung nhẹ mỗi lần gõ", Prefs.KEY_HAPTIC))
+                addView(toggle("Popup phím khi nhấn", "Hiện bản phóng to phím đang bấm", Prefs.KEY_KEY_POPUP))
             })
             addView(ui.card("Thử bàn phím", "Gõ thử tiếng Việt hoặc từ gõ tắt ngay tại đây").apply {
                 addView(ui.editor("Ví dụ: tieengs Vieetj", false).apply { tag = "typing-preview" })

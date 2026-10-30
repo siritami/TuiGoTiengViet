@@ -98,6 +98,16 @@ class KeyboardView @JvmOverloads constructor(
     /** Hold Backspace → highlight text leftward until release (Gboard-style). */
     var holdDeleteSelect = false
 
+    /** Vibrate on key press. */
+    var hapticEnabled = true
+        set(v) {
+            field = v
+            isHapticFeedbackEnabled = v
+        }
+
+    /** Show the key popup preview on press. */
+    var popupEnabled = true
+
     /** Show an emoji key right of ","; tapping it opens the emoji page. */
     var emojiEnabled = false
         set(v) {
@@ -413,6 +423,10 @@ class KeyboardView @JvmOverloads constructor(
     private val popupRect = RectF()
 
     private var pressed: Key? = null
+    /** Last touched key kept briefly after release so the popup lingers. */
+    private var popupKey: Key? = null
+    private var popupHoldUntil = 0L
+    private val popupHoldMs = 120L
     private var shiftTapTime = 0L
     private var downPointerId = -1
     private var downX = 0f
@@ -783,7 +797,10 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     private fun drawPreview(canvas: Canvas) {
-        val key = pressed ?: return
+        if (!popupEnabled) return
+        val key = pressed ?: popupKey.takeIf {
+            SystemClock.uptimeMillis() < popupHoldUntil
+        } ?: return
         if (key.spec.code <= 0) return // only literal-char keys get a popup
         val r = key.rect
         val pw = r.width() * 1.5f
@@ -947,6 +964,14 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     private fun cancelPress() {
+        val released = pressed
+        if (popupEnabled && released != null && released.spec.code > 0) {
+            popupKey = released
+            popupHoldUntil = SystemClock.uptimeMillis() + popupHoldMs
+            postInvalidateDelayed(popupHoldMs + 10)
+        } else {
+            popupKey = null
+        }
         pressed = null
         spaceSliding = false
         handler.removeCallbacks(repeatDelete)
