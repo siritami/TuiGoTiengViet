@@ -46,6 +46,8 @@ class KeyboardView @JvmOverloads constructor(
         fun onSpaceMenu() {}
         /** Extend the selection one char leftward (hold-Backspace select mode). */
         fun onSelectLeft() {}
+        /** Commit a multi-char string (emoji). Bypasses the engine. */
+        fun onText(text: String) {}
         fun onHideKeyboard() {}
         fun onCursorMove(delta: Int) {}
     }
@@ -96,6 +98,20 @@ class KeyboardView @JvmOverloads constructor(
     /** Hold Backspace → highlight text leftward until release (Gboard-style). */
     var holdDeleteSelect = false
 
+    /** Show an emoji key right of ","; tapping it opens the emoji page. */
+    var emojiEnabled = false
+        set(v) {
+            if (field == v) return
+            field = v
+            if (!v) emojiPage = false
+            rows = currentRows()
+            relayout()
+            requestLayout()
+        }
+
+    var emojiPage = false
+        private set
+
     /** Number row above letters — needed by VNI-style input methods
      *  (digits double as tone marks). */
     var showNumberRow = false
@@ -115,6 +131,7 @@ class KeyboardView @JvmOverloads constructor(
             if (field == v) return
             field = v
             symbolsPage = false
+            emojiPage = false
             symbolLevel = 0
             rows = currentRows()
             relayout()
@@ -141,6 +158,7 @@ class KeyboardView @JvmOverloads constructor(
     // ---- layout model ------------------------------------------------------
 
     private object K {
+        const val EMOJI = -12
         const val NUM_SPACE = -11
         const val MORE = -10
         const val IME = -9
@@ -200,6 +218,20 @@ class KeyboardView @JvmOverloads constructor(
         } else keys.toTypedArray()
     }
 
+    /** Bottom row shared by every page; emoji key appears next to "," when
+     *  the emoji setting is on. */
+    private fun bottomRow(modeLabel: String): Array<KeySpec> {
+        val keys = mutableListOf(
+            KeySpec(K.MODE, modeLabel, 1.5f),
+            KeySpec(','.code, ",", 0.8f),
+        )
+        if (emojiEnabled) keys += KeySpec(K.EMOJI, "😊", 0.9f)
+        keys += KeySpec(K.SPACE, "Tiếng Việt", if (emojiEnabled) 5.3f else 6.2f)
+        keys += KeySpec('.'.code, ".", 1f)
+        keys += KeySpec(K.ENTER, "⏎", 1.5f)
+        return keys.toTypedArray()
+    }
+
     private fun buildLettersRows(): Array<Array<KeySpec>> = arrayOf(
         row("qwertyuiop", withLetterHints = true),
         row("asdfghjkl", insetWeight = 0.5f, withLetterHints = true),
@@ -208,13 +240,7 @@ class KeyboardView @JvmOverloads constructor(
             *row("zxcvbnm", withLetterHints = true),
             KeySpec(K.DEL, "⌫", 1.5f),
         ),
-        arrayOf(
-            KeySpec(K.MODE, "?123", 1.5f),
-            KeySpec(','.code, ",", 0.8f),
-            KeySpec(K.SPACE, "Tiếng Việt", 6.2f),
-            KeySpec('.'.code, ".", 1f),
-            KeySpec(K.ENTER, "⏎", 1.5f),
-        ),
+        bottomRow("?123"),
     )
 
     private val symbolsRows: Array<Array<KeySpec>> by lazy {
@@ -226,13 +252,6 @@ class KeyboardView @JvmOverloads constructor(
                 *row("*\"':;!?"),
                 KeySpec(K.DEL, "⌫", 1.5f),
             ),
-            arrayOf(
-                KeySpec(K.MODE, "ABC", 1.5f),
-                KeySpec(','.code, ",", 0.8f),
-                KeySpec(K.SPACE, "Tiếng Việt", 6.2f),
-                KeySpec('.'.code, ".", 1f),
-                KeySpec(K.ENTER, "⏎", 1.5f),
-            ),
         )
     }
 
@@ -241,7 +260,6 @@ class KeyboardView @JvmOverloads constructor(
             row("^~`|\\€£¥%$"),
             row("°={}[]<>_₫"),
             arrayOf(KeySpec(K.MORE, "?123", 1.5f), *row("!?'\":;"), KeySpec(K.DEL, "⌫", 1.5f)),
-            symbolsRows.last(),
         )
     }
 
@@ -250,7 +268,19 @@ class KeyboardView @JvmOverloads constructor(
             row("~`|•√π÷×§Δ"),
             row("£€$¢^°={}\\"),
             arrayOf(KeySpec(K.MORE, "¥<>", 1.5f), *row("%©®™✓[]"), KeySpec(K.DEL, "⌫", 1.5f)),
-            symbolsRows.last(),
+        )
+    }
+
+    /** Emoji grid — labels are full strings (surrogate pairs safe). */
+    private val emojiRows: Array<Array<KeySpec>> by lazy {
+        fun erow(vararg e: String) =
+            e.map { KeySpec(it.codePointAt(0), it) }.toTypedArray()
+        arrayOf(
+            erow("😀", "😁", "😂", "🤣", "😃", "😄", "😅", "😆"),
+            erow("😉", "😊", "😋", "😎", "😍", "😘", "🥰", "😗"),
+            erow("🙃", "🙂", "🤗", "🤔", "😐", "😑", "😶", "🙄"),
+            erow("😮", "😴", "🥱", "😷", "🤒", "🤕", "🤢", "🥳"),
+            erow("👍", "👎", "👌", "✌️", "🙏", "👏", "💪", "❤️"),
         )
     }
 
@@ -277,7 +307,8 @@ class KeyboardView @JvmOverloads constructor(
 
     private fun currentRows(): Array<Array<KeySpec>> =
         if (numericLayout != NumericLayout.NONE) numPadRows(numericLayout)
-        else if (symbolsPage) { when (symbolLevel) { 1 -> extraSymbolRows; 2 -> legacySymbolRows; else -> symbolsRows } }
+        else if (emojiPage) arrayOf(*emojiRows, bottomRow("ABC"))
+        else if (symbolsPage) arrayOf(*when (symbolLevel) { 1 -> extraSymbolRows; 2 -> legacySymbolRows; else -> symbolsRows }, bottomRow("ABC"))
         else if (showNumberRow) arrayOf(buildNumberRow(), *buildLettersRows())
         else buildLettersRows()
 
@@ -647,7 +678,7 @@ class KeyboardView @JvmOverloads constructor(
                 iconPaint.color = if (isPressed) pressedGlyph(t.funcText) else t.funcText
                 drawDeleteIcon(canvas, r)
             }
-            K.MODE, K.MORE, K.NUM_SPACE -> {
+            K.MODE, K.MORE, K.NUM_SPACE, K.EMOJI -> {
                 cap(if (isPressed) (if (t.pressAccent) t.accent else t.funcPressed) else t.func)
                 textPaint.color = if (isPressed) pressedGlyph(t.funcText) else t.funcText
                 textPaint.textSize = if (spec.code == K.NUM_SPACE) 19 * dp else 14 * dp
@@ -822,9 +853,14 @@ class KeyboardView @JvmOverloads constructor(
         playSoundEffect(SoundEffectConstants.CLICK)
         if (key.spec.code == K.DEL) {
             manualShift = false
-            listener?.onDelete()
-            handler.postDelayed(repeatDelete, 400)
-            if (holdDeleteSelect) handler.postDelayed(delLongPress, 400)
+            if (holdDeleteSelect) {
+                // Select-on-hold mode: nothing deletes on down — a quick tap
+                // deletes once on release, a hold only highlights.
+                handler.postDelayed(delLongPress, 400)
+            } else {
+                listener?.onDelete()
+                handler.postDelayed(repeatDelete, 400)
+            }
         }
         if (key.spec.code == K.SPACE) {
             spaceLongFired = false
@@ -884,8 +920,8 @@ class KeyboardView @JvmOverloads constructor(
             handler.removeCallbacks(spaceLongPress)
             handler.removeCallbacks(hintLongPress)
             if (key?.spec?.code == K.DEL) {
-                handler.postDelayed(repeatDelete, 400)
                 if (holdDeleteSelect) handler.postDelayed(delLongPress, 400)
+                else handler.postDelayed(repeatDelete, 400)
             }
             else if (key?.spec?.longPressChar != null) handler.postDelayed(hintLongPress, 450)
             invalidate()
@@ -895,9 +931,16 @@ class KeyboardView @JvmOverloads constructor(
     private fun onUp(x: Float, y: Float) {
         val p = pressed ?: return
         val wasSliding = spaceSliding
+        val wasConsumed = pressConsumed
         val shouldDispatch = !wasSliding && p.spec.code != K.DEL && p.spec.code != K.SPACER &&
             (withinHysteresis(p, x, y) || hit(x, y) === p)
         cancelPress()
+        if (holdDeleteSelect && !wasConsumed && p.spec.code == K.DEL &&
+            (withinHysteresis(p, x, y) || hit(x, y) === p)) {
+            // Quick tap in select-on-hold mode: delete once on release.
+            listener?.onDelete()
+            return
+        }
         if (shouldDispatch) {
             dispatch(p)
         }
@@ -965,7 +1008,11 @@ class KeyboardView @JvmOverloads constructor(
             K.DEL, K.SPACER -> {} // delete fires on down/repeat
             K.MODE -> {
                 val previousCount = rows.size
-                symbolsPage = !symbolsPage
+                if (emojiPage) {
+                    emojiPage = false
+                } else {
+                    symbolsPage = !symbolsPage
+                }
                 symbolLevel = 0
                 rows = currentRows()
                 relayout()
@@ -986,9 +1033,16 @@ class KeyboardView @JvmOverloads constructor(
             }
             K.HIDE -> listener?.onHideKeyboard()
             K.IME -> listener?.onSwitchIme()
+            K.EMOJI -> {
+                emojiPage = true
+                rows = currentRows()
+                relayout()
+                requestLayout()
+            }
             else -> {
                 manualShift = false
-                listener?.onChar(currentLabel(key.spec).first())
+                if (emojiPage) listener?.onText(key.spec.label)
+                else listener?.onChar(currentLabel(key.spec).first())
                 if (shifted && !capsLock) {
                     shifted = false
                     listener?.onShiftChanged(false, false)

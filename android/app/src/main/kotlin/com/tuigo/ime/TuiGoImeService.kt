@@ -84,6 +84,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
                 keyboard.showNumberRow = usesNumberRow()
                 keyboard.landscapeSplit = Prefs.landSplit(this)
                 keyboard.holdDeleteSelect = Prefs.holdDelSelect(this)
+                keyboard.emojiEnabled = Prefs.emojiKey(this)
                 keyboard.setMetrics(Prefs.keyHeightDp(this), Prefs.keyGapDp(this), Prefs.landKeyHeightDp(this), Prefs.landSplitGapDp(this))
                 suggestionScroll?.setBackgroundColor(keyboard.theme.bg)
                 renderSuggestionStrip()
@@ -223,6 +224,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         keyboard.showNumberRow = usesNumberRow()
         keyboard.landscapeSplit = Prefs.landSplit(this)
         keyboard.holdDeleteSelect = Prefs.holdDelSelect(this)
+        keyboard.emojiEnabled = Prefs.emojiKey(this)
         keyboard.setMetrics(Prefs.keyHeightDp(this), Prefs.keyGapDp(this), Prefs.landKeyHeightDp(this), Prefs.landSplitGapDp(this))
         val dm = resources.displayMetrics.density
         val pad = (6 * dm).toInt()
@@ -300,6 +302,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         keyboard.numericLayout = numericLayoutFor(info)
         keyboard.landscapeSplit = Prefs.landSplit(this)
         keyboard.holdDeleteSelect = Prefs.holdDelSelect(this)
+        keyboard.emojiEnabled = Prefs.emojiKey(this)
         keyboard.setMetrics(Prefs.keyHeightDp(this), Prefs.keyGapDp(this), Prefs.landKeyHeightDp(this), Prefs.landSplitGapDp(this))
         suggestionScroll?.setBackgroundColor(keyboard.theme.bg)
         renderSuggestionStrip()
@@ -525,6 +528,19 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         selStart = selectEdge
         selEnd = selectAnchor
         expectedSel = selectEdge
+    }
+
+    /** Emoji commit — bypasses the engine (no tone-mark processing). */
+    override fun onText(text: String) {
+        val ic = currentInputConnection ?: return
+        dismissCurrentClipSuggestion()
+        engine.resetBuf()
+        spacePending = false
+        selectAnchor = -1
+        selectEdge = -1
+        ic.commitText(text, 1)
+        bumpExpected(text.length)
+        scheduleAutoCapitalizationUpdate()
     }
 
     override fun onEnter() {

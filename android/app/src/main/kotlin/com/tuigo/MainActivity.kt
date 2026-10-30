@@ -114,6 +114,7 @@ class MainActivity : Activity() {
                 addView(toggle("Viết hoa kí tự đầu tiên", "Tự bật Shift ở đầu câu", Prefs.KEY_AUTO_CAPITALIZE))
                 addView(toggle("Hai lần Space → dấu chấm", "Kết thúc câu nhanh", Prefs.KEY_DOUBLE_SPACE))
                 addView(toggle("Giữ phím xoá để bôi chữ", "Giữ Backspace để bôi đen chữ về bên trái, thả ra để dừng", Prefs.KEY_HOLD_DEL_SELECT, false))
+                addView(toggle("Phím emoji", "Thêm phím 😊 cạnh dấu phẩy để mở bảng emoji", Prefs.KEY_EMOJI_KEY, false))
             })
             addView(ui.card("Thử bàn phím", "Gõ thử tiếng Việt hoặc từ gõ tắt ngay tại đây").apply {
                 addView(ui.editor("Ví dụ: tieengs Vieetj", false).apply { tag = "typing-preview" })
@@ -132,7 +133,7 @@ class MainActivity : Activity() {
                 addView(slider("Chiều cao phím", Prefs.KEY_KEY_HEIGHT, 44, 68, 56))
                 addView(slider("Chiều cao phím ngang", Prefs.KEY_LAND_KEY_HEIGHT, 32, 56, 36))
                 addView(toggle("Tách đôi phím khi xoay ngang", "Chia bàn phím về hai bên để gõ bằng hai ngón cái", Prefs.KEY_LAND_SPLIT))
-                addView(slider("Khoảng trống giữa hai bên", Prefs.KEY_LAND_SPLIT_GAP, 8, 200, 40))
+                addView(slider("Khoảng trống giữa hai bên khi xoay ngang", Prefs.KEY_LAND_SPLIT_GAP, 8, 200, 40))
                 addView(slider("Khoảng cách phím", Prefs.KEY_KEY_GAP, 0, 8, 4))
                 addView(ui.text("Vuốt phím Space để di chuyển con trỏ · Giữ Space để đổi ngôn ngữ và kiểu gõ.", 13f, ui.pal.muted))
             })

@@ -29,6 +29,7 @@ object Prefs {
     const val KEY_LAND_SPLIT = "land_split"
     const val KEY_LAND_SPLIT_GAP = "land_split_gap"
     const val KEY_HOLD_DEL_SELECT = "hold_del_select"
+    const val KEY_EMOJI_KEY = "emoji_key"
     const val KEY_KEY_GAP = "key_gap"
     const val KEY_THEME = "key_theme"
     const val KEY_CLIPBOARD_SUGGEST = "clipboard_suggest"
@@ -123,6 +124,7 @@ object Prefs {
     fun landSplitGapDp(ctx: Context): Int = get(ctx).getInt(KEY_LAND_SPLIT_GAP, 40)
     /** Hold Backspace → extend selection leftward until release (Gboard-style). */
     fun holdDelSelect(ctx: Context): Boolean = get(ctx).getBoolean(KEY_HOLD_DEL_SELECT, false)
+    fun emojiKey(ctx: Context): Boolean = get(ctx).getBoolean(KEY_EMOJI_KEY, false)
     fun keyGapDp(ctx: Context): Int = get(ctx).getInt(KEY_KEY_GAP, 4)
 
     // ---- per-app language memory -------------------------------------------
