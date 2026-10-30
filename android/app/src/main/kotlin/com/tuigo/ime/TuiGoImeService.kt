@@ -82,7 +82,8 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
                 keyboard.theme = KeyboardThemes.current(this)
                 keyboard.vniMode = Prefs.inputMethod(this) == ImVni
                 keyboard.showNumberRow = usesNumberRow()
-                keyboard.setMetrics(Prefs.keyHeightDp(this), Prefs.keyGapDp(this))
+                keyboard.landscapeSplit = Prefs.landSplit(this)
+                keyboard.setMetrics(Prefs.keyHeightDp(this), Prefs.keyGapDp(this), Prefs.landKeyHeightDp(this))
                 suggestionScroll?.setBackgroundColor(keyboard.theme.bg)
                 renderSuggestionStrip()
                 updateAutoCapitalization()
@@ -213,7 +214,8 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         keyboard.vietnameseOn = vietOn
         keyboard.vniMode = Prefs.inputMethod(this) == ImVni
         keyboard.showNumberRow = usesNumberRow()
-        keyboard.setMetrics(Prefs.keyHeightDp(this), Prefs.keyGapDp(this))
+        keyboard.landscapeSplit = Prefs.landSplit(this)
+        keyboard.setMetrics(Prefs.keyHeightDp(this), Prefs.keyGapDp(this), Prefs.landKeyHeightDp(this))
         val dm = resources.displayMetrics.density
         val pad = (6 * dm).toInt()
         val strip = FlexboxLayout(this).apply {
@@ -288,7 +290,8 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         keyboard.vniMode = Prefs.inputMethod(this) == ImVni
         keyboard.showNumberRow = usesNumberRow()
         keyboard.numericLayout = numericLayoutFor(info)
-        keyboard.setMetrics(Prefs.keyHeightDp(this), Prefs.keyGapDp(this))
+        keyboard.landscapeSplit = Prefs.landSplit(this)
+        keyboard.setMetrics(Prefs.keyHeightDp(this), Prefs.keyGapDp(this), Prefs.landKeyHeightDp(this))
         suggestionScroll?.setBackgroundColor(keyboard.theme.bg)
         renderSuggestionStrip()
         engine.resetBuf()

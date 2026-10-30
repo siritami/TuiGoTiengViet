@@ -82,6 +82,15 @@ class KeyboardView @JvmOverloads constructor(
         private set
     private var symbolLevel = 0
 
+    /** Split the letter rows into left/right halves in landscape. */
+    var landscapeSplit = true
+        set(v) {
+            if (field == v) return
+            field = v
+            relayout()
+            invalidate()
+        }
+
     /** Number row above letters — needed by VNI-style input methods
      *  (digits double as tone marks). */
     var showNumberRow = false
@@ -270,12 +279,62 @@ class KeyboardView @JvmOverloads constructor(
     private val keys = mutableListOf<Key>()
     private var rows: Array<Array<KeySpec>> = buildLettersRows()
 
+    /** Split each letter row into left/right halves so landscape thumbs reach
+     *  every key — same idea as the iPad/Laban Key landscape layout. The
+     *  bottom row (mostly functional keys) stays one continuous row. */
+    private fun computeVisualRows(): List<List<Array<KeySpec>>> {
+        val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        if (!landscape || !landscapeSplit || numericLayout != NumericLayout.NONE) {
+            return rows.map { listOf(it) }
+        }
+        val out = ArrayList<List<Array<KeySpec>>>(rows.size)
+        for (rowSpec in rows) {
+            val spaceIdx = rowSpec.indexOfFirst { it.code == K.SPACE }
+            if (spaceIdx >= 0) {
+                // Bottom row: give each thumb its own Space half, like the
+                // Laban Key landscape layout.
+                val space = rowSpec[spaceIdx]
+                val halfSpace = space.copy(weight = space.weight * 0.48f)
+                out += listOf(
+                    arrayOf(*rowSpec.sliceArray(0 until spaceIdx), halfSpace),
+                    arrayOf(halfSpace, *rowSpec.sliceArray(spaceIdx + 1 until rowSpec.size)),
+                )
+                continue
+            }
+            var letters = 0
+            for (spec in rowSpec) if (spec.code >= 0) letters++
+            if (letters == 0) {
+                out += listOf(rowSpec)
+                continue
+            }
+            var seen = 0
+            var splitAt = -1
+            for (i in rowSpec.indices) {
+                if (rowSpec[i].code >= 0) {
+                    seen++
+                    if (seen == (letters + 1) / 2) { splitAt = i + 1; break }
+                }
+            }
+            if (splitAt <= 0 || splitAt >= rowSpec.size) {
+                out += listOf(rowSpec)
+                continue
+            }
+            out += listOf(
+                rowSpec.sliceArray(0 until splitAt),
+                rowSpec.sliceArray(splitAt until rowSpec.size),
+            )
+        }
+        return out
+    }
+
     // ---- metrics ------------------------------------------------------------
 
     private val dp = resources.displayMetrics.density
     private var keyHeight = 56 * dp
     private val rowGap = 6 * dp
     private var keyGap = 4 * dp
+    /** Horizontal gap between the left/right halves in landscape split mode. */
+    private val splitGap = 40 * dp
     private val padH = 3 * dp
     private val padTop = 8 * dp
     private val padBottom = 8 * dp
@@ -397,9 +456,13 @@ class KeyboardView @JvmOverloads constructor(
         requestApplyInsets()
     }
 
-    /** Key metrics in dp — from the settings screen. */
-    fun setMetrics(heightDp: Int, gapDp: Int) {
-        val h = (if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) heightDp.coerceAtMost(40) else heightDp.coerceIn(44, 68)) * dp
+    /** Key metrics in dp — from the settings screen. `landHeightDp` lets the
+     *  user pick a separate key height for landscape; when it is unset the
+     *  landscape default of 36dp applies. */
+    fun setMetrics(heightDp: Int, gapDp: Int, landHeightDp: Int = -1) {
+        val h = (if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE)
+            (if (landHeightDp > 0) landHeightDp else 36).coerceIn(32, 56)
+            else heightDp.coerceIn(44, 68)) * dp
         val g = gapDp.coerceIn(0, 8) * dp
         if (h == keyHeight && g == keyGap) return
         keyHeight = h
@@ -416,7 +479,7 @@ class KeyboardView @JvmOverloads constructor(
         } else {
             applyTheme()
         }
-        setMetrics(Prefs.keyHeightDp(context), Prefs.keyGapDp(context))
+        setMetrics(Prefs.keyHeightDp(context), Prefs.keyGapDp(context), Prefs.landKeyHeightDp(context))
     }
 
     private fun applyTheme() {
@@ -445,16 +508,21 @@ class KeyboardView @JvmOverloads constructor(
 
     private fun relayout() {
         keys.clear()
+        val visualRows = computeVisualRows()
         val contentW = width - 2 * padH
         var y = padTop
-        for (rowSpec in rows) {
-            var x = padH
-            val totalWeight = rowSpec.sumOf { it.weight.toDouble() }.toFloat()
-            val unitW = (contentW - keyGap * (rowSpec.size - 1)) / totalWeight
-            for (spec in rowSpec) {
-                val kw = unitW * spec.weight
-                keys += Key(spec, RectF(x, y, x + kw, y + keyHeight))
-                x += kw + keyGap
+        for (halves in visualRows) {
+            val halfW = if (halves.size > 1) (contentW - splitGap) / 2f else contentW
+            for (half in halves.indices) {
+                val rowSpec = halves[half]
+                var x = padH + half * (halfW + splitGap)
+                val totalWeight = rowSpec.sumOf { it.weight.toDouble() }.toFloat()
+                val unitW = (halfW - keyGap * (rowSpec.size - 1)) / totalWeight
+                for (spec in rowSpec) {
+                    val kw = unitW * spec.weight
+                    keys += Key(spec, RectF(x, y, x + kw, y + keyHeight))
+                    x += kw + keyGap
+                }
             }
             y += keyHeight + rowGap
         }

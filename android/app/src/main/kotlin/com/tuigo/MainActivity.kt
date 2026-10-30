@@ -125,6 +125,8 @@ class MainActivity : Activity() {
                 addView(toggle("Lịch sử bộ nhớ tạm", "Lưu các mục đã sao chép trên thiết bị — mở từ biểu tượng đồng hồ trên thanh gợi ý", Prefs.KEY_CLIPBOARD_HISTORY, true))
                 addView(slider("Số mục bộ nhớ tạm lưu tối đa", Prefs.KEY_CLIPBOARD_MAX, 10, 500, 50, "mục"))
                 addView(slider("Chiều cao phím", Prefs.KEY_KEY_HEIGHT, 44, 68, 56))
+                addView(slider("Chiều cao phím ngang", Prefs.KEY_LAND_KEY_HEIGHT, 32, 56, 36))
+                addView(toggle("Tách đôi phím khi xoay ngang", "Chia bàn phím về hai bên để gõ bằng hai ngón cái", Prefs.KEY_LAND_SPLIT))
                 addView(slider("Khoảng cách phím", Prefs.KEY_KEY_GAP, 0, 8, 4))
                 addView(ui.text("Vuốt phím Space để di chuyển con trỏ · Giữ Space để đổi ngôn ngữ và kiểu gõ.", 13f, ui.pal.muted))
             })
