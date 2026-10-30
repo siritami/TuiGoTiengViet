@@ -345,6 +345,15 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
     override fun onFinishInputView(finishingInput: Boolean) {
         super.onFinishInputView(finishingInput)
         clearInlineSuggestions()
+        // Free chip views (they retain decoded thumbnails) and the clipboard
+        // cache while the keyboard is hidden — both rebuild on next show.
+        suggestionStrip?.removeAllViews()
+        pinnedSuggestionHost?.removeAllViews()
+        suggestionBar?.visibility = View.GONE
+        renderedClipKey = null
+        renderedHistoryOn = false
+        renderedTheme = null
+        ClipboardHistory.unload()
         clipPanel?.dismiss()
         spacePopup?.dismiss()
         engine.resetBuf()
