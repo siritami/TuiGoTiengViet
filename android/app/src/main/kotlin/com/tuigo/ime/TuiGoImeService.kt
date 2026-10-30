@@ -3,6 +3,7 @@ package com.tuigo.ime
 import android.inputmethodservice.InputMethodService
 import android.annotation.SuppressLint
 import android.content.ClipboardManager
+import android.content.Intent
 import android.graphics.drawable.Icon
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -658,6 +659,10 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         item("VIQR", current == ImViqr) { Prefs.get(this).edit().putInt(Prefs.KEY_IM, ImViqr).apply() }
         divider()
         item("Chọn bàn phím khác…", false) { onSwitchIme() }
+        item("Cài đặt Tui Gõ…", false) {
+            startActivity(Intent(this, com.tuigo.MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
         spacePopup?.dismiss()
         spacePopup = PopupWindow(panel, ViewGroup.LayoutParams.WRAP_CONTENT,
             ViewGroup.LayoutParams.WRAP_CONTENT, true).apply {
