@@ -69,5 +69,5 @@ dependencies {
     // FileProvider for re-pasting clipboard-history images via commitContent.
     implementation("androidx.core:core:1.13.1")
     // System emoji picker (recent, categories, variants, skin tones).
-    implementation("androidx.emoji2:emojipicker:1.5.0")
+    implementation("androidx.emoji2:emoji2-emojipicker:1.5.0")
 }
