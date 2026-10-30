@@ -13,32 +13,32 @@ object KeyboardThemes {
     private val light = listOf(
         ThemePresets.tuigoLight, ThemePresets.iosPureLight, ThemePresets.cyberNeonLight,
         ThemePresets.matchaLatteLight, ThemePresets.modernJadeLight, ThemePresets.obsidian,
-        ThemePresets.pastelMint, ThemePresets.futoDefaultLight, ThemePresets.deepSeaLight,
+        ThemePresets.pastelMint, ThemePresets.materialLight, ThemePresets.deepSeaLight,
         ThemePresets.sunflower, ThemePresets.snowfall, ThemePresets.cottonCandy,
         ThemePresets.laban, ThemePresets.white, ThemePresets.ios, ThemePresets.iosOld,
         ThemePresets.silver, ThemePresets.wood, ThemePresets.nLight, ThemePresets.ics,
         ThemePresets.kitkat, ThemePresets.dark, ThemePresets.black, ThemePresets.gray,
         ThemePresets.blue, ThemePresets.nDark, ThemePresets.catppuccin, ThemePresets.emerald,
         ThemePresets.amoledPurple, ThemePresets.steelGrey, ThemePresets.highContrast,
-        ThemePresets.futoDefaultDark, ThemePresets.deepSeaDark,
+        ThemePresets.materialDark, ThemePresets.deepSeaDark,
     )
     private val darkThemes = listOf(
         ThemePresets.tuigoDark, ThemePresets.iosPureDark, ThemePresets.cyberNeonDark,
         ThemePresets.matchaLatteDark, ThemePresets.modernJadeDark, ThemePresets.obsidian,
-        ThemePresets.pastelMint, ThemePresets.futoDefaultDark, ThemePresets.deepSeaDark,
+        ThemePresets.pastelMint, ThemePresets.materialDark, ThemePresets.deepSeaDark,
         ThemePresets.catppuccin, ThemePresets.emerald, ThemePresets.amoledPurple,
         ThemePresets.steelGrey, ThemePresets.highContrast,
         ThemePresets.laban, ThemePresets.white, ThemePresets.ios, ThemePresets.iosOld,
         ThemePresets.silver, ThemePresets.wood, ThemePresets.nLight, ThemePresets.ics,
         ThemePresets.kitkat, ThemePresets.dark, ThemePresets.black, ThemePresets.gray,
-        ThemePresets.blue, ThemePresets.nDark, ThemePresets.futoDefaultLight,
+        ThemePresets.blue, ThemePresets.nDark, ThemePresets.materialLight,
         ThemePresets.deepSeaLight, ThemePresets.sunflower, ThemePresets.snowfall,
         ThemePresets.cottonCandy,
     )
 
     val ids = listOf(
         "tuigo", "adaptive", "ios_pure", "cyber_neon", "matcha_latte", "modern_jade",
-        "obsidian", "pastel_mint", "futo_default", "deep_sea", "sunflower", "snowfall",
+        "obsidian", "pastel_mint", "material", "deep_sea", "sunflower", "snowfall",
         "cotton_candy", "catppuccin", "emerald", "amoled_purple", "steel_grey",
         "high_contrast", "laban", "white", "black", "gray", "blue", "ios", "ios_old",
         "ics", "kitkat", "silver", "wood", "dark", "n_light", "n_dark",

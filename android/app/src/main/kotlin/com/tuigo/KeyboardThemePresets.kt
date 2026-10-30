@@ -339,13 +339,8 @@ internal object ThemePresets {
         popup = 0xFF24352C.argb, popupText = 0xFFF4ECE1.argb, popupBorder = 0xFF52B788.argb,
     )
 
-    // ---- ported from FUTO Keyboard (android-keyboard) preset themes ---------
-    // Mapping: keyboardSurface->bg, keyboardContainer->key,
-    // keyboardContainerVariant->func, keyboardPress->keyPressed,
-    // onKeyboardContainer->text, primary->accent, onPrimary->onAccent.
-
-    val futoDefaultLight = KeyTheme(
-        "futo_default", "FUTO",
+    val materialLight = KeyTheme(
+        "material", "Material",
         bg = 0xFFEBECF0.argb, bgEnd = 0xFFE1E2E5.argb,
         key = 0xFFFFFFFF.argb, keyPressed = 0xFFD4D5D9.argb,
         func = 0xFFF7F7F7.argb, funcPressed = 0xFFD4D5D9.argb,
@@ -356,8 +351,8 @@ internal object ThemePresets {
         enterAccentFill = true,
         popup = 0xFFFFFFFF.argb, popupText = 0xFF191B21.argb, popupBorder = 0xFFBCC2D6.argb,
     )
-    val futoDefaultDark = KeyTheme(
-        "futo_default", "FUTO",
+    val materialDark = KeyTheme(
+        "material", "Material",
         bg = 0xFF121316.argb, bgEnd = 0xFF0D0D0F.argb,
         key = 0xFF1E2024.argb, keyPressed = 0xFF3C3F47.argb,
         func = 0xFF17181C.argb, funcPressed = 0xFF3C3F47.argb,
