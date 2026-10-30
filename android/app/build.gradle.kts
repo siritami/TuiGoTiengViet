@@ -68,4 +68,6 @@ dependencies {
     implementation("com.google.android.flexbox:flexbox:3.0.0")
     // FileProvider for re-pasting clipboard-history images via commitContent.
     implementation("androidx.core:core:1.13.1")
+    // System emoji picker (recent, categories, variants, skin tones).
+    implementation("androidx.emoji2:emojipicker:1.5.0")
 }

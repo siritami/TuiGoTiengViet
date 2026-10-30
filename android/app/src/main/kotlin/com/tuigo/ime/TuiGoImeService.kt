@@ -112,6 +112,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
     private var spacePopup: PopupWindow? = null
 
     /** Inline-autofill & clipboard suggestion strip (Gboard-style chips above the keys). */
+    private var emojiPanel: androidx.emoji2.emojipicker.EmojiPickerView? = null
     private var suggestionBar: android.widget.FrameLayout? = null
     private var suggestionScroll: HorizontalScrollView? = null
     private var suggestionSurface: SurfaceView? = null
@@ -271,7 +272,38 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
                     addView(pinnedHost, LinearLayout.LayoutParams(-2, -1))
                 }, android.widget.FrameLayout.LayoutParams(-1, -1))
             }, LinearLayout.LayoutParams(-1, stripH))
-            addView(keyboard, LinearLayout.LayoutParams(-1, -2))
+            addView(android.widget.FrameLayout(this@TuiGoImeService).apply {
+                addView(keyboard, android.widget.FrameLayout.LayoutParams(-1, -2))
+                val picker = androidx.emoji2.emojipicker.EmojiPickerView(this@TuiGoImeService).apply {
+                    emojiGridColumns = 9
+                    emojiGridRows = 3f
+                    setOnEmojiPickedListener { emoji -> onText(emoji.toString()) }
+                    visibility = View.GONE
+                    setBackgroundColor(keyboard.theme.bg)
+                }
+                emojiPanel = picker
+                addView(picker, android.widget.FrameLayout.LayoutParams(-1, -2).apply {
+                    gravity = Gravity.TOP
+                })
+            }, LinearLayout.LayoutParams(-1, -2))
+        }
+    }
+
+    /** Show/hide the system emoji panel above the keyboard's bottom row. */
+    override fun onEmojiToggle(showing: Boolean) {
+        val picker = emojiPanel ?: return
+        if (showing) {
+            picker.setBackgroundColor(keyboard.theme.bg)
+            // Cover the letter rows; leave the bottom row (ABC, space, ⌫) free.
+            val lp = picker.layoutParams as? android.widget.FrameLayout.LayoutParams
+            val h = keyboard.lastRowTopPx().toInt()
+            if (lp != null && lp.height != h && h > 0) {
+                lp.height = h
+                picker.layoutParams = lp
+            }
+            picker.visibility = View.VISIBLE
+        } else {
+            picker.visibility = View.GONE
         }
     }
 
@@ -346,6 +378,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
 
     override fun onFinishInputView(finishingInput: Boolean) {
         super.onFinishInputView(finishingInput)
+        emojiPanel?.visibility = View.GONE
         clearInlineSuggestions()
         clipPanel?.dismiss()
         spacePopup?.dismiss()

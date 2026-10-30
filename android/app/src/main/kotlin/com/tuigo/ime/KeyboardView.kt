@@ -48,6 +48,8 @@ class KeyboardView @JvmOverloads constructor(
         fun onSelectLeft() {}
         /** Commit a multi-char string (emoji). Bypasses the engine. */
         fun onText(text: String) {}
+        /** Emoji key tapped — service shows/hides the system emoji panel. */
+        fun onEmojiToggle(showing: Boolean) {}
         fun onHideKeyboard() {}
         fun onCursorMove(delta: Int) {}
     }
@@ -229,16 +231,17 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     /** Bottom row shared by every page; emoji key appears next to "," when
-     *  the emoji setting is on. */
-    private fun bottomRow(modeLabel: String): Array<KeySpec> {
+     *  the emoji setting is on. `delInsteadOfEnter` swaps ⏎ for ⌫ (emoji page
+     *  keeps delete reachable while the picker covers the letter rows). */
+    private fun bottomRow(modeLabel: String, delInsteadOfEnter: Boolean = false): Array<KeySpec> {
         val keys = mutableListOf(
             KeySpec(K.MODE, modeLabel, 1.5f),
-            KeySpec(','.code, ",", 0.8f),
+            KeySpec(','.code, ",", 1.1f),
         )
         if (emojiEnabled) keys += KeySpec(K.EMOJI, "😊", 0.9f)
-        keys += KeySpec(K.SPACE, "Tiếng Việt", if (emojiEnabled) 5.3f else 6.2f)
-        keys += KeySpec('.'.code, ".", 1f)
-        keys += KeySpec(K.ENTER, "⏎", 1.5f)
+        keys += KeySpec(K.SPACE, "Tiếng Việt", if (emojiEnabled) 5.0f else 5.9f)
+        keys += KeySpec('.'.code, ".", 1.3f)
+        keys += if (delInsteadOfEnter) KeySpec(K.DEL, "⌫", 1.5f) else KeySpec(K.ENTER, "⏎", 1.5f)
         return keys.toTypedArray()
     }
 
@@ -281,18 +284,8 @@ class KeyboardView @JvmOverloads constructor(
         )
     }
 
-    /** Emoji grid — labels are full strings (surrogate pairs safe). */
-    private val emojiRows: Array<Array<KeySpec>> by lazy {
-        fun erow(vararg e: String) =
-            e.map { KeySpec(it.codePointAt(0), it) }.toTypedArray()
-        arrayOf(
-            erow("😀", "😁", "😂", "🤣", "😃", "😄", "😅", "😆"),
-            erow("😉", "😊", "😋", "😎", "😍", "😘", "🥰", "😗"),
-            erow("🙃", "🙂", "🤗", "🤔", "😐", "😑", "😶", "🙄"),
-            erow("😮", "😴", "🥱", "😷", "🤒", "🤕", "🤢", "🥳"),
-            erow("👍", "👎", "👌", "✌️", "🙏", "👏", "💪", "❤️"),
-        )
-    }
+    // Emoji picker is the androidx EmojiPickerView hosted by the IME service —
+    // the canvas page only tracks whether it is currently showing.
 
     private fun buildNumberRow(): Array<KeySpec> =
         "1234567890".map { ch ->
@@ -317,7 +310,7 @@ class KeyboardView @JvmOverloads constructor(
 
     private fun currentRows(): Array<Array<KeySpec>> =
         if (numericLayout != NumericLayout.NONE) numPadRows(numericLayout)
-        else if (emojiPage) arrayOf(*emojiRows, bottomRow("ABC"))
+        else if (emojiPage) arrayOf(*buildLettersRows().copyOfRange(0, 3), bottomRow("ABC", delInsteadOfEnter = true))
         else if (symbolsPage) arrayOf(*when (symbolLevel) { 1 -> extraSymbolRows; 2 -> legacySymbolRows; else -> symbolsRows }, bottomRow("ABC"))
         else if (showNumberRow) arrayOf(buildNumberRow(), *buildLettersRows())
         else buildLettersRows()
@@ -576,6 +569,12 @@ class KeyboardView @JvmOverloads constructor(
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         relayout()
     }
+
+    /** Y (px) of the last row's top edge — the emoji panel overlays everything
+     *  above this so the bottom row (ABC / Space / ⌫… wait, ⌫ is row 3)
+     *  stays reachable while the picker is open. */
+    fun lastRowTopPx(): Float =
+        padTop + (rows.size - 1) * (keyHeight + rowGap)
 
     private fun relayout() {
         keys.clear()
@@ -1035,6 +1034,7 @@ class KeyboardView @JvmOverloads constructor(
                 val previousCount = rows.size
                 if (emojiPage) {
                     emojiPage = false
+                    listener?.onEmojiToggle(false)
                 } else {
                     symbolsPage = !symbolsPage
                 }
@@ -1059,10 +1059,10 @@ class KeyboardView @JvmOverloads constructor(
             K.HIDE -> listener?.onHideKeyboard()
             K.IME -> listener?.onSwitchIme()
             K.EMOJI -> {
-                emojiPage = true
+                emojiPage = !emojiPage
                 rows = currentRows()
                 relayout()
-                requestLayout()
+                listener?.onEmojiToggle(emojiPage)
             }
             else -> {
                 manualShift = false
