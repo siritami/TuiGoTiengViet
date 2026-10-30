@@ -44,6 +44,8 @@ class KeyboardView @JvmOverloads constructor(
         fun onVietToggle() {}
         fun onSwitchIme() {}
         fun onSpaceMenu() {}
+        /** Extend the selection one char leftward (hold-Backspace select mode). */
+        fun onSelectLeft() {}
         fun onHideKeyboard() {}
         fun onCursorMove(delta: Int) {}
     }
@@ -90,6 +92,9 @@ class KeyboardView @JvmOverloads constructor(
             relayout()
             invalidate()
         }
+
+    /** Hold Backspace → highlight text leftward until release (Gboard-style). */
+    var holdDeleteSelect = false
 
     /** Number row above letters — needed by VNI-style input methods
      *  (digits double as tone marks). */
@@ -334,7 +339,7 @@ class KeyboardView @JvmOverloads constructor(
     private val rowGap = 6 * dp
     private var keyGap = 4 * dp
     /** Horizontal gap between the left/right halves in landscape split mode. */
-    private val splitGap = 40 * dp
+    private var splitGap = 40 * dp
     private val padH = 3 * dp
     private val padTop = 8 * dp
     private val padBottom = 8 * dp
@@ -404,6 +409,24 @@ class KeyboardView @JvmOverloads constructor(
         }
     }
 
+    /** After the long-press delay in hold-select mode: switch from deleting to
+     *  extending the selection leftward until the finger lifts. */
+    private val repeatSelect = object : Runnable {
+        override fun run() {
+            listener?.onSelectLeft()
+            handler.postDelayed(this, 50)
+        }
+    }
+
+    private val delLongPress = Runnable {
+        if (!holdDeleteSelect || pressed?.spec?.code != K.DEL) return@Runnable
+        pressConsumed = true
+        handler.removeCallbacks(repeatDelete)
+        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        handler.post(repeatSelect)
+        invalidate()
+    }
+
     /** Long-press a hinted key types the hint char directly (Unikey-style). */
     private val hintLongPress = Runnable {
         val k = pressed ?: return@Runnable
@@ -458,15 +481,18 @@ class KeyboardView @JvmOverloads constructor(
 
     /** Key metrics in dp — from the settings screen. `landHeightDp` lets the
      *  user pick a separate key height for landscape; when it is unset the
-     *  landscape default of 36dp applies. */
-    fun setMetrics(heightDp: Int, gapDp: Int, landHeightDp: Int = -1) {
+     *  landscape default of 36dp applies. `landSplitGapDp` is the space
+     *  between the two halves in landscape split mode. */
+    fun setMetrics(heightDp: Int, gapDp: Int, landHeightDp: Int = -1, landSplitGapDp: Int = 40) {
         val h = (if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE)
             (if (landHeightDp > 0) landHeightDp else 36).coerceIn(32, 56)
             else heightDp.coerceIn(44, 68)) * dp
         val g = gapDp.coerceIn(0, 8) * dp
-        if (h == keyHeight && g == keyGap) return
+        val s = landSplitGapDp.coerceIn(8, 200) * dp
+        if (h == keyHeight && g == keyGap && s == splitGap) return
         keyHeight = h
         keyGap = g
+        splitGap = s
         relayout()
         requestLayout()
     }
@@ -479,7 +505,7 @@ class KeyboardView @JvmOverloads constructor(
         } else {
             applyTheme()
         }
-        setMetrics(Prefs.keyHeightDp(context), Prefs.keyGapDp(context), Prefs.landKeyHeightDp(context))
+        setMetrics(Prefs.keyHeightDp(context), Prefs.keyGapDp(context), Prefs.landKeyHeightDp(context), Prefs.landSplitGapDp(context))
     }
 
     private fun applyTheme() {
@@ -798,6 +824,7 @@ class KeyboardView @JvmOverloads constructor(
             manualShift = false
             listener?.onDelete()
             handler.postDelayed(repeatDelete, 400)
+            if (holdDeleteSelect) handler.postDelayed(delLongPress, 400)
         }
         if (key.spec.code == K.SPACE) {
             spaceLongFired = false
@@ -852,9 +879,14 @@ class KeyboardView @JvmOverloads constructor(
             downX = x
             downY = y
             handler.removeCallbacks(repeatDelete)
+            handler.removeCallbacks(repeatSelect)
+            handler.removeCallbacks(delLongPress)
             handler.removeCallbacks(spaceLongPress)
             handler.removeCallbacks(hintLongPress)
-            if (key?.spec?.code == K.DEL) handler.postDelayed(repeatDelete, 400)
+            if (key?.spec?.code == K.DEL) {
+                handler.postDelayed(repeatDelete, 400)
+                if (holdDeleteSelect) handler.postDelayed(delLongPress, 400)
+            }
             else if (key?.spec?.longPressChar != null) handler.postDelayed(hintLongPress, 450)
             invalidate()
         }
@@ -875,6 +907,8 @@ class KeyboardView @JvmOverloads constructor(
         pressed = null
         spaceSliding = false
         handler.removeCallbacks(repeatDelete)
+        handler.removeCallbacks(repeatSelect)
+        handler.removeCallbacks(delLongPress)
         handler.removeCallbacks(spaceLongPress)
         handler.removeCallbacks(hintLongPress)
         invalidate()
