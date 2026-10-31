@@ -451,7 +451,7 @@ class KeyboardView @JvmOverloads constructor(
                 borderPaint.color = theme.popupBorder
                 canvas.drawRoundRect(r, corner, corner, borderPaint)
             }
-            popupTextPaint.textSize = 26 * dp
+            popupTextPaint.textSize = 20 * dp
             val ty = r.centerY() - (popupTextPaint.descent() + popupTextPaint.ascent()) / 2
             canvas.drawText(label, r.centerX(), ty, popupTextPaint)
         }
@@ -869,10 +869,10 @@ class KeyboardView @JvmOverloads constructor(
         } ?: run { hideOverlayPopup(); return }
         if (key.spec.code <= 0) { hideOverlayPopup(); return } // only char keys get a popup
         val r = key.rect
-        val pw = r.width() * 1.15f
-        val ph = keyHeight * 1.05f
+        val pw = r.width() * 1.0f
+        val ph = keyHeight * 0.9f
         // Tight rise above the pressed key — just clears the fingertip.
-        val lift = rowGap + keyHeight * 0.05f
+        val lift = rowGap * 0.5f
         var py = r.top - ph - lift
         if (py < 0) {
             if (suggestionStripVisible()) {
@@ -894,7 +894,7 @@ class KeyboardView @JvmOverloads constructor(
             borderPaint.color = theme.popupBorder
             canvas.drawRoundRect(popupRect, corner, corner, borderPaint)
         }
-        popupTextPaint.textSize = 26 * dp
+        popupTextPaint.textSize = 20 * dp
         val y = popupRect.centerY() - (popupTextPaint.descent() + popupTextPaint.ascent()) / 2
         canvas.drawText(currentLabel(key.spec), popupRect.centerX(), y, popupTextPaint)
     }
