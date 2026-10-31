@@ -264,6 +264,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             keyboard.overlayHost = this
+            keyboard.suggestionStripVisible = { suggestionBar?.visibility == View.VISIBLE }
             addView(android.widget.FrameLayout(this@TuiGoImeService).apply {
                 suggestionBar = this
                 visibility = View.GONE

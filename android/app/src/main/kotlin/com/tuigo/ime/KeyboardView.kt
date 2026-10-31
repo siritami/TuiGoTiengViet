@@ -461,6 +461,10 @@ class KeyboardView @JvmOverloads constructor(
         override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
     }
 
+    /** True while the suggestion strip occupies the row above the keys —
+     *  set by the service whenever it shows/hides the bar. */
+    var suggestionStripVisible: () -> Boolean = { true }
+
     private fun showOverlayPopup(key: Key, py: Float, pw: Float, ph: Float) {
         val host = overlayHost ?: return
         val d = overlayDrawable ?: PopupDrawable().also { overlayDrawable = it }
@@ -867,15 +871,19 @@ class KeyboardView @JvmOverloads constructor(
         val r = key.rect
         val pw = r.width() * 1.15f
         val ph = keyHeight * 1.05f
-        // Slight rise above the pressed key — enough to clear the finger
-        // without drifting far from the key.
-        val lift = rowGap + keyHeight * 0.12f
-        val py = r.top - ph - lift
+        // Tight rise above the pressed key — just clears the fingertip.
+        val lift = rowGap + keyHeight * 0.05f
+        var py = r.top - ph - lift
         if (py < 0) {
-            // Overflows the top edge — paint it into the parent overlay so it
-            // floats over the suggestion strip instead of being clipped.
-            showOverlayPopup(key, py, pw, ph)
-            return
+            if (suggestionStripVisible()) {
+                // Overflows the top edge — paint it into the parent overlay
+                // so it floats over the suggestion strip.
+                showOverlayPopup(key, py, pw, ph)
+                return
+            }
+            // Strip hidden: nothing above the keyboard — slide the popup back
+            // down over the key instead of wasting the space.
+            py = r.top
         }
         hideOverlayPopup()
         val px = (r.centerX() - pw / 2).coerceIn(padH, width - padH - pw)
