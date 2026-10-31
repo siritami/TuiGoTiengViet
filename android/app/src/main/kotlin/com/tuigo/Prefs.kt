@@ -29,6 +29,7 @@ object Prefs {
     const val KEY_LAND_SPLIT = "land_split"
     const val KEY_LAND_SPLIT_GAP = "land_split_gap"
     const val KEY_HOLD_DEL_SELECT = "hold_del_select"
+    const val KEY_HOLD_DEL_MODE = "hold_del_mode"
     const val KEY_HAPTIC = "haptic_feedback"
     const val KEY_KEY_POPUP = "key_popup"
     const val KEY_KEY_GAP = "key_gap"
@@ -123,8 +124,15 @@ object Prefs {
     fun landKeyHeightDp(ctx: Context): Int = get(ctx).getInt(KEY_LAND_KEY_HEIGHT, -1)
     fun landSplit(ctx: Context): Boolean = get(ctx).getBoolean(KEY_LAND_SPLIT, true)
     fun landSplitGapDp(ctx: Context): Int = get(ctx).getInt(KEY_LAND_SPLIT_GAP, 40)
-    /** Hold Backspace → extend selection leftward until release (Gboard-style). */
-    fun holdDelSelect(ctx: Context): Boolean = get(ctx).getBoolean(KEY_HOLD_DEL_SELECT, false)
+    /** Hold-Backspace behaviour:
+     *  0 = off (repeat-delete), 1 = hold then drag to highlight, release deletes,
+     *  2 = hold auto-highlights leftward, release deletes. */
+    fun holdDelMode(ctx: Context): Int {
+        val p = get(ctx)
+        if (p.contains(KEY_HOLD_DEL_MODE)) return p.getInt(KEY_HOLD_DEL_MODE, 0).coerceIn(0, 2)
+        // Migrate the old boolean: enabled → drag-select mode.
+        return if (p.getBoolean(KEY_HOLD_DEL_SELECT, false)) 1 else 0
+    }
     fun haptic(ctx: Context): Boolean = get(ctx).getBoolean(KEY_HAPTIC, true)
     fun keyPopup(ctx: Context): Boolean = get(ctx).getBoolean(KEY_KEY_POPUP, true)
     fun keyGapDp(ctx: Context): Int = get(ctx).getInt(KEY_KEY_GAP, 4)

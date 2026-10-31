@@ -84,7 +84,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
                 keyboard.vniMode = Prefs.inputMethod(this) == ImVni
                 keyboard.showNumberRow = usesNumberRow()
                 keyboard.landscapeSplit = Prefs.landSplit(this)
-                keyboard.holdDeleteSelect = Prefs.holdDelSelect(this)
+                keyboard.delHoldMode = Prefs.holdDelMode(this)
                 keyboard.hapticEnabled = Prefs.haptic(this)
                 keyboard.popupEnabled = Prefs.keyPopup(this)
                 keyboard.setMetrics(Prefs.keyHeightDp(this), Prefs.keyGapDp(this), Prefs.landKeyHeightDp(this), Prefs.landSplitGapDp(this))
@@ -101,7 +101,6 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
 
     private var vietOn = true
     private var doubleSpace = true
-    private var holdDelSelect = false
     /** Fixed end of the hold-Backspace selection (the side that stays put). */
     private var selectAnchor = -1
     /** Moving edge of the hold-Backspace selection (left side, walks left). */
@@ -192,7 +191,6 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         vietOn = Prefs.vietForApp(this, hostPkg) ?: Prefs.vietOn(this)
         engine.setVietKey(vietOn)
         doubleSpace = Prefs.doubleSpacePeriod(this)
-        holdDelSelect = Prefs.holdDelSelect(this)
         // Reload on every activation, including an empty/deleted macro file.
         // Preserve the last readable list only on a genuine I/O failure.
         try {
@@ -225,7 +223,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         keyboard.vniMode = Prefs.inputMethod(this) == ImVni
         keyboard.showNumberRow = usesNumberRow()
         keyboard.landscapeSplit = Prefs.landSplit(this)
-        keyboard.holdDeleteSelect = Prefs.holdDelSelect(this)
+        keyboard.delHoldMode = Prefs.holdDelMode(this)
         keyboard.hapticEnabled = Prefs.haptic(this)
         keyboard.popupEnabled = Prefs.keyPopup(this)
         keyboard.setMetrics(Prefs.keyHeightDp(this), Prefs.keyGapDp(this), Prefs.landKeyHeightDp(this), Prefs.landSplitGapDp(this))
@@ -305,7 +303,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         keyboard.numericLayout = numericLayoutFor(info)
         keyboard.resetPage()
         keyboard.landscapeSplit = Prefs.landSplit(this)
-        keyboard.holdDeleteSelect = Prefs.holdDelSelect(this)
+        keyboard.delHoldMode = Prefs.holdDelMode(this)
         keyboard.hapticEnabled = Prefs.haptic(this)
         keyboard.popupEnabled = Prefs.keyPopup(this)
         keyboard.setMetrics(Prefs.keyHeightDp(this), Prefs.keyGapDp(this), Prefs.landKeyHeightDp(this), Prefs.landSplitGapDp(this))

@@ -113,7 +113,11 @@ class MainActivity : Activity() {
                 addView(toggle("Khôi phục từ ngoại ngữ", "Giữ nguyên từ không phải tiếng Việt", Prefs.KEY_AUTO_NONVN))
                 addView(toggle("Viết hoa kí tự đầu tiên", "Tự bật Shift ở đầu câu", Prefs.KEY_AUTO_CAPITALIZE))
                 addView(toggle("Hai lần Space → dấu chấm", "Kết thúc câu nhanh", Prefs.KEY_DOUBLE_SPACE))
-                addView(toggle("Giữ phím xoá để bôi và xoá", "Giữ Backspace rồi kéo trái/phải để bôi đen, thả ra để xoá", Prefs.KEY_HOLD_DEL_SELECT, false))
+                addView(choicePicker(
+                    "Giữ phím xoá để bôi và xoá",
+                    "Tắt: giữ lặp xoá · Kéo: giữ rồi kéo để bôi · Giữ: tự bôi dần sang trái — thả ra để xoá",
+                    Prefs.KEY_HOLD_DEL_MODE, Prefs.holdDelMode(this),
+                    listOf("Tắt", "Kéo để bôi", "Giữ để bôi")))
                 addView(toggle("Rung khi nhấn phím", "Phản hồi rung nhẹ mỗi lần gõ", Prefs.KEY_HAPTIC))
                 addView(toggle("Popup phím khi nhấn", "Hiện bản phóng to phím đang bấm", Prefs.KEY_KEY_POPUP))
             })
@@ -319,6 +323,45 @@ class MainActivity : Activity() {
             override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
             override fun getIntrinsicWidth(): Int = w
             override fun getIntrinsicHeight(): Int = h
+        }
+    }
+    /** Row of chips that stores the picked index into an int pref. */
+    private fun choicePicker(title: String, hint: String, key: String, selected: Int, labels: List<String>): View {
+        val p = Prefs.get(this)
+        val chips = mutableListOf<TextView>()
+        fun pick(i: Int) {
+            p.edit().putInt(key, i).apply()
+            chips.forEachIndexed { idx, chip ->
+                chip.background = if (idx == i)
+                    ui.surface(ui.pal.glow, 12).apply { setStroke(ui.dp(1), ui.pal.accent) }
+                else ui.surface(ui.pal.raised, 12)
+                chip.setTextColor(if (idx == i) ui.pal.accent else ui.pal.text)
+            }
+        }
+        return ui.column().apply {
+            layoutParams = ui.fullWidthLp(topMarginDp = 10)
+            addView(ui.text(title, 14f, ui.pal.text, true))
+            if (hint.isNotEmpty()) addView(ui.text(hint, 12f, ui.pal.muted).apply {
+                setPadding(0, ui.dp(2), 0, ui.dp(6))
+            })
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                labels.forEachIndexed { i, label ->
+                    val chip = TextView(this@MainActivity).apply {
+                        text = label; textSize = 13f
+                        setPadding(ui.dp(14), ui.dp(8), ui.dp(14), ui.dp(8))
+                        background = ui.surface(ui.pal.raised, 12)
+                        setOnClickListener { pick(i) }
+                        layoutParams = LinearLayout.LayoutParams(
+                            android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                            android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ).apply { rightMargin = ui.dp(8) }
+                    }
+                    chips += chip
+                    addView(chip)
+                }
+            })
+            pick(selected)
         }
     }
     private fun slider(title: String, key: String, min: Int, max: Int, default: Int, unit: String = "dp"): View {

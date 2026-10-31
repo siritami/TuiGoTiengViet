@@ -105,8 +105,9 @@ class KeyboardView @JvmOverloads constructor(
             invalidate()
         }
 
-    /** Hold Backspace → highlight text leftward until release (Gboard-style). */
-    var holdDeleteSelect = false
+    /** Hold-Backspace mode: 0 = repeat-delete, 1 = hold then drag to highlight,
+     *  2 = hold auto-highlights leftward; releasing deletes the selection. */
+    var delHoldMode = 0
 
     /** Vibrate on key press. */
     var hapticEnabled = true
@@ -441,12 +442,23 @@ class KeyboardView @JvmOverloads constructor(
     private val delStepPx = 10 * dp
 
     private val delLongPress = Runnable {
-        if (!holdDeleteSelect || pressed?.spec?.code != K.DEL) return@Runnable
+        if (delHoldMode == 0 || pressed?.spec?.code != K.DEL) return@Runnable
         delSelecting = true
         delSelectDir = 0
         handler.removeCallbacks(repeatDelete)
         performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        if (delHoldMode == 2) handler.post(delAutoSelect)
         invalidate()
+    }
+
+    /** Mode 2: while held, steadily extend the highlight leftward. */
+    private val delAutoSelect = object : Runnable {
+        override fun run() {
+            if (!delSelecting || pressed?.spec?.code != K.DEL) return
+            listener?.onSelectMove(-1)
+            performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+            handler.postDelayed(this, 60)
+        }
     }
 
     /** Long-press a hinted key types the hint char directly (Unikey-style). */
@@ -849,9 +861,9 @@ class KeyboardView @JvmOverloads constructor(
         playSoundEffect(SoundEffectConstants.CLICK)
         if (key.spec.code == K.DEL) {
             manualShift = false
-            if (holdDeleteSelect) {
-                // Select-on-hold mode: nothing deletes on down — a quick tap
-                // deletes once on release, hold+drag highlights.
+            if (delHoldMode != 0) {
+                // Select-on-hold modes: nothing deletes on down — a quick tap
+                // deletes once on release, holding highlights instead.
                 delSelecting = false
                 delSelectDownX = x
                 delSelectLastX = x
@@ -886,6 +898,8 @@ class KeyboardView @JvmOverloads constructor(
         // Hold-Backspace selection drag — like the space-bar cursor swipe but
         // it highlights text instead of moving the caret.
         if (delSelecting && pressed?.spec?.code == K.DEL) {
+            // Drag adjusts the highlight too — in auto-select mode it can
+            // trim back to the right or extend further left.
             val dx = x - delSelectDownX
             if (delSelectDir == 0 && abs(dx) > delSwipeSlop) {
                 delSelectDir = if (dx > 0) 1 else -1
@@ -933,10 +947,11 @@ class KeyboardView @JvmOverloads constructor(
             downY = y
             handler.removeCallbacks(repeatDelete)
             handler.removeCallbacks(delLongPress)
+            handler.removeCallbacks(delAutoSelect)
             handler.removeCallbacks(spaceLongPress)
             handler.removeCallbacks(hintLongPress)
             if (key?.spec?.code == K.DEL) {
-                if (holdDeleteSelect) handler.postDelayed(delLongPress, 400)
+                if (delHoldMode != 0) handler.postDelayed(delLongPress, 400)
                 else handler.postDelayed(repeatDelete, 400)
             }
             else if (key?.spec?.longPressChar != null) handler.postDelayed(hintLongPress, 450)
@@ -957,7 +972,7 @@ class KeyboardView @JvmOverloads constructor(
             listener?.onSelectDelete()
             return
         }
-        if (holdDeleteSelect && !wasConsumed && p.spec.code == K.DEL &&
+        if (delHoldMode != 0 && !wasConsumed && p.spec.code == K.DEL &&
             (withinHysteresis(p, x, y) || hit(x, y) === p)) {
             // Quick tap in select-on-hold mode: delete once on release.
             listener?.onDelete()
@@ -982,6 +997,7 @@ class KeyboardView @JvmOverloads constructor(
         delSelecting = false
         handler.removeCallbacks(repeatDelete)
         handler.removeCallbacks(delLongPress)
+        handler.removeCallbacks(delAutoSelect)
         handler.removeCallbacks(spaceLongPress)
         handler.removeCallbacks(hintLongPress)
         invalidate()
