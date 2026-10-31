@@ -96,6 +96,20 @@ class KeyboardView @JvmOverloads constructor(
         relayout()
     }
 
+    /** Edge swipe down packs all keys to one side for one-handed typing.
+     *  0 = disabled (feature off), 1 = waiting for gesture. */
+    var oneHandedEnabled = false
+        set(v) {
+            field = v
+            if (!v) oneHandedSide = 0
+            relayout()
+            invalidate()
+        }
+
+    /** 0 = full width, -1 = packed left, +1 = packed right. */
+    var oneHandedSide = 0
+        private set
+
     /** Split the letter rows into left/right halves in landscape. */
     var landscapeSplit = true
         set(v) {
@@ -400,6 +414,12 @@ class KeyboardView @JvmOverloads constructor(
     private val popupRect = RectF()
 
     private var pressed: Key? = null
+    /** One-handed edge swipe: -1 started on left edge, +1 right, 0 none. */
+    private var edgeSwipeSide = 0
+    private var edgeSwipeY = 0f
+    private var edgeSwipeX = 0f
+    private val edgeZonePx = 28 * dp
+    private val edgeSwipeTrigger = 36 * dp
     /** Last touched key kept briefly after release so the popup lingers. */
     private var popupKey: Key? = null
     private var popupHoldUntil = 0L
@@ -616,13 +636,18 @@ class KeyboardView @JvmOverloads constructor(
     private fun relayout() {
         keys.clear()
         val visualRows = computeVisualRows()
-        val contentW = width - 2 * padH
+        // One-handed mode packs keys into 78% of the width on the chosen side.
+        val contentW = (width - 2 * padH) * (if (oneHandedSide != 0) 0.78f else 1f)
+        val contentX = padH + when {
+            oneHandedSide > 0 -> (width - 2 * padH) - contentW
+            else -> 0f
+        }
         var y = padTop
         for (halves in visualRows) {
             val halfW = if (halves.size > 1) (contentW - splitGap) / 2f else contentW
             for (half in halves.indices) {
                 val rowSpec = halves[half]
-                var x = padH + half * (halfW + splitGap)
+                var x = contentX + half * (halfW + splitGap)
                 val totalWeight = rowSpec.sumOf { it.weight.toDouble() }.toFloat()
                 val unitW = (halfW - keyGap * (rowSpec.size - 1)) / totalWeight
                 for (spec in rowSpec) {
@@ -871,6 +896,9 @@ class KeyboardView @JvmOverloads constructor(
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 downPointerId = ev.getPointerId(0)
+                edgeSwipeSide = edgeSideOf(ev.x)
+                edgeSwipeX = ev.x
+                edgeSwipeY = ev.y
                 onDown(ev.x, ev.y)
             }
             MotionEvent.ACTION_POINTER_DOWN -> {
@@ -887,6 +915,9 @@ class KeyboardView @JvmOverloads constructor(
                     cancelPress()
                 }
                 downPointerId = ev.getPointerId(idx)
+                edgeSwipeSide = edgeSideOf(ev.getX(idx))
+                edgeSwipeX = ev.getX(idx)
+                edgeSwipeY = ev.getY(idx)
                 onDown(ev.getX(idx), ev.getY(idx))
             }
             MotionEvent.ACTION_MOVE -> {
@@ -898,11 +929,30 @@ class KeyboardView @JvmOverloads constructor(
                 if (idx >= 0 && ev.getPointerId(idx) == downPointerId) {
                     onUp(ev.getX(idx), ev.getY(idx))
                     downPointerId = -1
+                    edgeSwipeSide = 0
                 }
             }
-            MotionEvent.ACTION_CANCEL -> cancelPress()
+            MotionEvent.ACTION_CANCEL -> { edgeSwipeSide = 0; cancelPress() }
         }
         return true
+    }
+
+    /** Which side an edge-swipe starting at x belongs to: left/right edge
+     *  strip always counts; when keys are packed to one side the whole empty
+     *  side acts as the gesture zone too. 0 = not an edge start. */
+    private fun edgeSideOf(x: Float): Int {
+        if (!oneHandedEnabled) return 0
+        if (x <= edgeZonePx) return -1
+        if (x >= width - edgeZonePx) return 1
+        if (oneHandedSide != 0) return if (x < width / 2f) -1 else 1
+        return 0
+    }
+
+    private fun toggleOneHanded(side: Int) {
+        oneHandedSide = if (oneHandedSide == side) 0 else side
+        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        relayout()
+        invalidate()
     }
 
     private fun onDown(x: Float, y: Float) {
@@ -948,6 +998,19 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     private fun onMove(x: Float, y: Float) {
+        // One-handed edge swipe: downward pull from a side edge packs the keys
+        // to that side (or exits when swiping the same side again).
+        if (edgeSwipeSide != 0) {
+            val dy = y - edgeSwipeY
+            val dx = x - edgeSwipeX
+            if (dy > edgeSwipeTrigger && abs(dy) > abs(dx) * 1.3f) {
+                edgeSwipeSide = 0
+                cancelPress()
+                toggleOneHanded(if (x < width / 2f) -1 else 1)
+                return
+            }
+            if (abs(dx) > abs(dy) * 1.5f) edgeSwipeSide = 0 // horizontal swipe — not ours
+        }
         if (pressConsumed && !delSelecting) return
         // Hold-Backspace selection drag — like the space-bar cursor swipe but
         // it highlights text instead of moving the caret.

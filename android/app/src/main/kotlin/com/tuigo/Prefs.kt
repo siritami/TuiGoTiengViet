@@ -28,6 +28,7 @@ object Prefs {
     const val KEY_LAND_KEY_HEIGHT = "land_key_height"
     const val KEY_LAND_SPLIT = "land_split"
     const val KEY_LAND_SPLIT_GAP = "land_split_gap"
+    const val KEY_ONE_HANDED = "one_handed"
     const val KEY_HOLD_DEL_SELECT = "hold_del_select"
     const val KEY_HOLD_DEL_MODE = "hold_del_mode"
     const val KEY_HAPTIC = "haptic_feedback"
@@ -124,6 +125,8 @@ object Prefs {
     fun landKeyHeightDp(ctx: Context): Int = get(ctx).getInt(KEY_LAND_KEY_HEIGHT, -1)
     fun landSplit(ctx: Context): Boolean = get(ctx).getBoolean(KEY_LAND_SPLIT, true)
     fun landSplitGapDp(ctx: Context): Int = get(ctx).getInt(KEY_LAND_SPLIT_GAP, 40)
+    /** One-handed mode: swipe down on a side edge to pack keys to that side. */
+    fun oneHanded(ctx: Context): Boolean = get(ctx).getBoolean(KEY_ONE_HANDED, false)
     /** Hold-Backspace behaviour:
      *  0 = off (repeat-delete), 1 = hold then drag to highlight, release deletes,
      *  2 = hold auto-highlights leftward, release deletes. */

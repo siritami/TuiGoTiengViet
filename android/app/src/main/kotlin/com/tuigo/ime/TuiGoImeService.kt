@@ -84,6 +84,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
                 keyboard.vniMode = Prefs.inputMethod(this) == ImVni
                 keyboard.showNumberRow = usesNumberRow()
                 keyboard.landscapeSplit = Prefs.landSplit(this)
+                keyboard.oneHandedEnabled = Prefs.oneHanded(this)
                 keyboard.delHoldMode = Prefs.holdDelMode(this)
                 keyboard.hapticEnabled = Prefs.haptic(this)
                 keyboard.popupEnabled = Prefs.keyPopup(this)
@@ -223,6 +224,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         keyboard.vniMode = Prefs.inputMethod(this) == ImVni
         keyboard.showNumberRow = usesNumberRow()
         keyboard.landscapeSplit = Prefs.landSplit(this)
+        keyboard.oneHandedEnabled = Prefs.oneHanded(this)
         keyboard.delHoldMode = Prefs.holdDelMode(this)
         keyboard.hapticEnabled = Prefs.haptic(this)
         keyboard.popupEnabled = Prefs.keyPopup(this)
@@ -304,6 +306,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         keyboard.numericLayout = numericLayoutFor(info)
         keyboard.resetPage()
         keyboard.landscapeSplit = Prefs.landSplit(this)
+        keyboard.oneHandedEnabled = Prefs.oneHanded(this)
         keyboard.delHoldMode = Prefs.holdDelMode(this)
         keyboard.hapticEnabled = Prefs.haptic(this)
         keyboard.popupEnabled = Prefs.keyPopup(this)

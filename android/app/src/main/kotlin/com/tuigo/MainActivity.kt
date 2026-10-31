@@ -138,6 +138,7 @@ class MainActivity : Activity() {
                 addView(slider("Chiều cao phím", Prefs.KEY_KEY_HEIGHT, 44, 68, 56))
                 addView(slider("Chiều cao phím ngang", Prefs.KEY_LAND_KEY_HEIGHT, 32, 56, 36))
                 addView(toggle("Tách đôi phím khi xoay ngang", "Chia bàn phím về hai bên để gõ bằng hai ngón cái", Prefs.KEY_LAND_SPLIT))
+                addView(toggle("Chế độ một tay", "Vuốt từ trên xuống cạnh trái/phải bàn phím để chuyển sang chế độ một tay", Prefs.KEY_ONE_HANDED, false))
                 addView(slider("Khoảng trống giữa hai bên khi xoay ngang", Prefs.KEY_LAND_SPLIT_GAP, 8, 200, 40))
                 addView(slider("Khoảng cách phím", Prefs.KEY_KEY_GAP, 0, 8, 4))
                 addView(ui.text("Vuốt phím Space để di chuyển con trỏ · Giữ Space để đổi ngôn ngữ và kiểu gõ.", 13f, ui.pal.muted))
