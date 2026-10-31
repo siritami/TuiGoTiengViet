@@ -113,11 +113,19 @@ class MainActivity : Activity() {
                 addView(toggle("Khôi phục từ ngoại ngữ", "Giữ nguyên từ không phải tiếng Việt", Prefs.KEY_AUTO_NONVN))
                 addView(toggle("Viết hoa kí tự đầu tiên", "Tự bật Shift ở đầu câu", Prefs.KEY_AUTO_CAPITALIZE))
                 addView(toggle("Hai lần Space → dấu chấm", "Kết thúc câu nhanh", Prefs.KEY_DOUBLE_SPACE))
+                val sensSlider = slider("Độ nhạy kéo chọn", Prefs.KEY_HOLD_DEL_SENS, 2, 30, 10, "dp/ký tự")
                 addView(choicePicker(
                     "Giữ phím xoá để bôi và xoá",
                     "Tắt: giữ lặp xoá · Kéo: giữ rồi kéo để bôi · Giữ: tự bôi dần sang trái — thả ra để xoá",
                     Prefs.KEY_HOLD_DEL_MODE, Prefs.holdDelMode(this@MainActivity),
-                    listOf("Tắt", "Kéo để bôi", "Giữ để bôi")))
+                    listOf("Tắt", "Kéo để bôi", "Giữ để bôi")) { mode ->
+                    // Sensitivity only applies to drag-select mode.
+                    sensSlider.alpha = if (mode == 1) 1f else 0.4f
+                    (sensSlider as? android.view.ViewGroup)?.let { vg ->
+                        for (i in 0 until vg.childCount) vg.getChildAt(i).isEnabled = mode == 1
+                    }
+                })
+                addView(sensSlider)
                 addView(toggle("Rung khi nhấn phím", "Phản hồi rung nhẹ mỗi lần gõ", Prefs.KEY_HAPTIC))
                 addView(toggle("Popup phím khi nhấn", "Hiện bản phóng to phím đang bấm", Prefs.KEY_KEY_POPUP))
             })
@@ -327,11 +335,12 @@ class MainActivity : Activity() {
         }
     }
     /** Row of chips that stores the picked index into an int pref. */
-    private fun choicePicker(title: String, hint: String, key: String, selected: Int, labels: List<String>): View {
+    private fun choicePicker(title: String, hint: String, key: String, selected: Int, labels: List<String>, onPick: (Int) -> Unit = {}): View {
         val p = Prefs.get(this)
         val chips = mutableListOf<TextView>()
         fun pick(i: Int) {
             p.edit().putInt(key, i).apply()
+            onPick(i)
             chips.forEachIndexed { idx, chip ->
                 chip.background = if (idx == i)
                     ui.surface(ui.pal.glow, 12).apply { setStroke(ui.dp(1), ui.pal.accent) }

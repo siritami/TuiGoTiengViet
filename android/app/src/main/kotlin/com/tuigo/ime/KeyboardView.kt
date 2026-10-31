@@ -123,6 +123,14 @@ class KeyboardView @JvmOverloads constructor(
      *  2 = hold auto-highlights leftward; releasing deletes the selection. */
     var delHoldMode = 0
 
+    /** Swipe distance per selected char in drag-select mode — wired from
+     *  Prefs.holdDelSensDp (smaller = more sensitive). */
+    var delSelectSensDp = 10
+        set(v) {
+            field = v.coerceIn(2, 30)
+            delStepPx = field * dp
+        }
+
     /** Vibrate on key press. */
     var hapticEnabled = true
         set(v) {
@@ -507,7 +515,7 @@ class KeyboardView @JvmOverloads constructor(
     private var delSelectDownX = 0f
     private var delSelectLastX = 0f
     private val delSwipeSlop = 10 * dp
-    private val delStepPx = 10 * dp
+    private var delStepPx = 10 * dp
 
     private val delLongPress = Runnable {
         if (delHoldMode == 0 || pressed?.spec?.code != K.DEL) return@Runnable

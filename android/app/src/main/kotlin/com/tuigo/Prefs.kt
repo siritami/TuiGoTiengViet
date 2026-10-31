@@ -31,6 +31,7 @@ object Prefs {
     const val KEY_ONE_HANDED = "one_handed"
     const val KEY_HOLD_DEL_SELECT = "hold_del_select"
     const val KEY_HOLD_DEL_MODE = "hold_del_mode"
+    const val KEY_HOLD_DEL_SENS = "hold_del_sens"
     const val KEY_HAPTIC = "haptic_feedback"
     const val KEY_KEY_POPUP = "key_popup"
     const val KEY_KEY_GAP = "key_gap"
@@ -136,6 +137,10 @@ object Prefs {
         // Migrate the old boolean: enabled → drag-select mode.
         return if (p.getBoolean(KEY_HOLD_DEL_SELECT, false)) 1 else 0
     }
+
+    /** Drag-to-select sensitivity: dp of swipe per character. Smaller value =
+     *  more sensitive — a short swipe highlights more text. */
+    fun holdDelSensDp(ctx: Context): Int = get(ctx).getInt(KEY_HOLD_DEL_SENS, 10).coerceIn(2, 30)
     fun haptic(ctx: Context): Boolean = get(ctx).getBoolean(KEY_HAPTIC, true)
     fun keyPopup(ctx: Context): Boolean = get(ctx).getBoolean(KEY_KEY_POPUP, true)
     fun keyGapDp(ctx: Context): Int = get(ctx).getInt(KEY_KEY_GAP, 4)
