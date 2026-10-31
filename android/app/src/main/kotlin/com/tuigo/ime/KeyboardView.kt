@@ -404,6 +404,54 @@ class KeyboardView @JvmOverloads constructor(
     private var popupKey: Key? = null
     private var popupHoldUntil = 0L
     private val popupHoldMs = 120L
+
+    /** Root container of the whole input view (suggestion strip + keyboard).
+     *  When set, a top-row popup that would overflow the view's top edge is
+     *  drawn into this parent's overlay so it floats over the strip. */
+    var overlayHost: View? = null
+    private var overlayDrawable: PopupDrawable? = null
+
+    /** Popup drawn in the input-view container's overlay — free to paint over
+     *  the suggestion strip above the keyboard. */
+    private inner class PopupDrawable : android.graphics.drawable.Drawable() {
+        var label = ""
+        override fun draw(canvas: Canvas) {
+            val r = RectF(bounds)
+            keyPaint.color = theme.popup
+            canvas.drawRoundRect(r, corner, corner, keyPaint)
+            if (theme.popupBorder ushr 24 != 0) {
+                borderPaint.color = theme.popupBorder
+                canvas.drawRoundRect(r, corner, corner, borderPaint)
+            }
+            popupTextPaint.textSize = 26 * dp
+            val ty = r.centerY() - (popupTextPaint.descent() + popupTextPaint.ascent()) / 2
+            canvas.drawText(label, r.centerX(), ty, popupTextPaint)
+        }
+        override fun setAlpha(alpha: Int) {}
+        override fun setColorFilter(cf: android.graphics.ColorFilter?) {}
+        @Deprecated("Deprecated in Java")
+        override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
+    }
+
+    private fun showOverlayPopup(key: Key, py: Float, pw: Float, ph: Float) {
+        val host = overlayHost ?: return
+        val d = overlayDrawable ?: PopupDrawable().also { overlayDrawable = it }
+        d.label = currentLabel(key.spec)
+        val r = key.rect
+        val px = (r.centerX() - pw / 2).coerceIn(padH, width - padH - pw)
+        // Keyboard coords → host coords.
+        val l = (left + px).roundToInt()
+        val t = (top + py).roundToInt()
+        d.setBounds(l, t, l + pw.roundToInt(), t + ph.roundToInt())
+        host.overlay.remove(d)
+        host.overlay.add(d)
+    }
+
+    private fun hideOverlayPopup() {
+        val d = overlayDrawable ?: return
+        overlayHost?.overlay?.remove(d)
+        overlayDrawable = null
+    }
     private var shiftTapTime = 0L
     private var downPointerId = -1
     private var downX = 0f
@@ -785,19 +833,25 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     private fun drawPreview(canvas: Canvas) {
-        if (!popupEnabled) return
+        if (!popupEnabled) { hideOverlayPopup(); return }
         val key = pressed ?: popupKey.takeIf {
             SystemClock.uptimeMillis() < popupHoldUntil
-        } ?: return
-        if (key.spec.code <= 0) return // only literal-char keys get a popup
+        } ?: run { hideOverlayPopup(); return }
+        if (key.spec.code <= 0) { hideOverlayPopup(); return } // only char keys get a popup
         val r = key.rect
         val pw = r.width() * 1.5f
         val ph = keyHeight * 1.15f
+        // Float the popup higher above the pressed key (Gboard-style).
+        val lift = rowGap + keyHeight * 0.35f
+        val py = r.top - ph - lift
+        if (py < 0) {
+            // Overflows the top edge — paint it into the parent overlay so it
+            // floats over the suggestion strip instead of being clipped.
+            showOverlayPopup(key, py, pw, ph)
+            return
+        }
+        hideOverlayPopup()
         val px = (r.centerX() - pw / 2).coerceIn(padH, width - padH - pw)
-        // Top row has no room above — zoom in place over the key instead of
-        // clamping to the edge and colliding with the suggestion strip.
-        val py = if (r.top - ph - rowGap >= 2 * dp) r.top - ph - rowGap
-            else r.centerY() - ph / 2f
         popupRect.set(px, py, px + pw, py + ph)
         keyPaint.color = theme.popup
         canvas.drawRoundRect(popupRect, corner, corner, keyPaint)
@@ -1005,6 +1059,7 @@ class KeyboardView @JvmOverloads constructor(
 
     override fun onDetachedFromWindow() {
         cancelPress()
+        hideOverlayPopup()
         super.onDetachedFromWindow()
     }
 

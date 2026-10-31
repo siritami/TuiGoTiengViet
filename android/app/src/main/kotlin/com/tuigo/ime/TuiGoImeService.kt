@@ -256,6 +256,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         val stripH = (40 * dm).toInt()
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            keyboard.overlayHost = this
             addView(android.widget.FrameLayout(this@TuiGoImeService).apply {
                 suggestionBar = this
                 visibility = View.GONE
