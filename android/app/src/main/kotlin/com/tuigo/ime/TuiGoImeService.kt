@@ -518,30 +518,38 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
         scheduleAutoCapitalizationUpdate()
     }
 
-    /** Hold-Backspace select mode: extend the selection one char to the left.
-     *  The right edge (where the cursor started) stays fixed. */
-    override fun onSelectLeft() {
+    /** Hold-Backspace drag-select: move the free edge one char in `dir`
+     *  (−1 = left, +1 = right). The opposite edge stays anchored where the
+     *  hold started; crossing the anchor flips which side is selected. */
+    override fun onSelectMove(dir: Int) {
         val ic = currentInputConnection ?: return
         engine.resetBuf()
         spacePending = false
         if (selectAnchor < 0 || selectEdge < 0) {
-            // First step: anchor = current right edge (or cursor position).
-            if (selStart >= 0 && selEnd >= 0) {
-                selectAnchor = if (selStart != selEnd) maxOf(selStart, selEnd) else selEnd
-                selectEdge = selectAnchor
+            // First step: anchor = current cursor position.
+            if (selStart >= 0 && selEnd >= 0 && selStart == selEnd) {
+                selectAnchor = selEnd
+                selectEdge = selEnd
             } else {
                 val pos = ic.getTextBeforeCursor(100000, 0)?.length ?: return
                 selectAnchor = pos
                 selectEdge = pos
             }
         }
-        if (selectEdge <= 0) return
-        selectEdge--
-        ic.setSelection(selectEdge, selectAnchor)
-        // Track the new selection locally so the next step extends further.
-        selStart = selectEdge
-        selEnd = selectAnchor
-        expectedSel = selectEdge
+        selectEdge = (selectEdge + dir).coerceAtLeast(0)
+        val s = minOf(selectEdge, selectAnchor)
+        val e = maxOf(selectEdge, selectAnchor)
+        ic.setSelection(s, e)
+        selStart = s
+        selEnd = e
+        expectedSel = s
+    }
+
+    /** Release after drag-select — delete the highlighted span. */
+    override fun onSelectDelete() {
+        selectAnchor = -1
+        selectEdge = -1
+        onDelete()
     }
 
     override fun onEnter() {

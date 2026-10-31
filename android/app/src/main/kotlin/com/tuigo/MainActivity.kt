@@ -113,7 +113,7 @@ class MainActivity : Activity() {
                 addView(toggle("Khôi phục từ ngoại ngữ", "Giữ nguyên từ không phải tiếng Việt", Prefs.KEY_AUTO_NONVN))
                 addView(toggle("Viết hoa kí tự đầu tiên", "Tự bật Shift ở đầu câu", Prefs.KEY_AUTO_CAPITALIZE))
                 addView(toggle("Hai lần Space → dấu chấm", "Kết thúc câu nhanh", Prefs.KEY_DOUBLE_SPACE))
-                addView(toggle("Giữ phím xoá để bôi chữ", "Giữ Backspace để bôi đen chữ về bên trái, thả ra để dừng", Prefs.KEY_HOLD_DEL_SELECT, false))
+                addView(toggle("Giữ phím xoá để bôi và xoá", "Giữ Backspace rồi kéo trái/phải để bôi đen, thả ra để xoá", Prefs.KEY_HOLD_DEL_SELECT, false))
                 addView(toggle("Rung khi nhấn phím", "Phản hồi rung nhẹ mỗi lần gõ", Prefs.KEY_HAPTIC))
                 addView(toggle("Popup phím khi nhấn", "Hiện bản phóng to phím đang bấm", Prefs.KEY_KEY_POPUP))
             })

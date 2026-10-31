@@ -44,8 +44,11 @@ class KeyboardView @JvmOverloads constructor(
         fun onVietToggle() {}
         fun onSwitchIme() {}
         fun onSpaceMenu() {}
-        /** Extend the selection one char leftward (hold-Backspace select mode). */
-        fun onSelectLeft() {}
+        /** Extend/reduce the hold-Backspace selection by one char;
+         *  dir<0 selects leftward, dir>0 rightward. */
+        fun onSelectMove(dir: Int) {}
+        /** Commit the current selection — delete whatever is highlighted. */
+        fun onSelectDelete() {}
         fun onHideKeyboard() {}
         fun onCursorMove(delta: Int) {}
     }
@@ -427,21 +430,22 @@ class KeyboardView @JvmOverloads constructor(
         }
     }
 
-    /** After the long-press delay in hold-select mode: switch from deleting to
-     *  extending the selection leftward until the finger lifts. */
-    private val repeatSelect = object : Runnable {
-        override fun run() {
-            listener?.onSelectLeft()
-            handler.postDelayed(this, 50)
-        }
-    }
+    /** After the long-press delay in hold-select mode the finger becomes a
+     *  selection handle: dragging left/right extends the highlight, releasing
+     *  deletes the selected text. */
+    private var delSelecting = false
+    private var delSelectDir = 0
+    private var delSelectDownX = 0f
+    private var delSelectLastX = 0f
+    private val delSwipeSlop = 10 * dp
+    private val delStepPx = 10 * dp
 
     private val delLongPress = Runnable {
         if (!holdDeleteSelect || pressed?.spec?.code != K.DEL) return@Runnable
-        pressConsumed = true
+        delSelecting = true
+        delSelectDir = 0
         handler.removeCallbacks(repeatDelete)
         performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-        handler.post(repeatSelect)
         invalidate()
     }
 
@@ -471,18 +475,16 @@ class KeyboardView @JvmOverloads constructor(
     init {
         isHapticFeedbackEnabled = true
         setOnApplyWindowInsetsListener { _, insets ->
+            // Only the mandatory gesture inset (gesture pill) pads the keys —
+            // the IME window already sits above the nav bar, so adding the
+            // full navigationBars() inset pushed the layout taller than the
+            // window and clipped the bottom row on some apps.
             val b = when {
                 Build.VERSION.SDK_INT >= 30 ->
-                    insets.getInsets(
-                        WindowInsets.Type.navigationBars() or
-                            WindowInsets.Type.mandatorySystemGestures() or
-                            WindowInsets.Type.systemGestures()
-                    ).bottom
+                    insets.getInsets(WindowInsets.Type.mandatorySystemGestures()).bottom
                 Build.VERSION.SDK_INT == 29 ->
-                    @Suppress("DEPRECATION")
-                    maxOf(insets.mandatorySystemGestureInsets.bottom,
-                        insets.systemGestureInsets.bottom)
-                else -> @Suppress("DEPRECATION") insets.systemWindowInsetBottom
+                    @Suppress("DEPRECATION") insets.mandatorySystemGestureInsets.bottom
+                else -> 0
             }
             if (b != navInset) {
                 navInset = b
@@ -780,7 +782,10 @@ class KeyboardView @JvmOverloads constructor(
         val pw = r.width() * 1.5f
         val ph = keyHeight * 1.15f
         val px = (r.centerX() - pw / 2).coerceIn(padH, width - padH - pw)
-        val py = (r.top - ph - rowGap).coerceAtLeast(2 * dp)
+        // Top row has no room above — zoom in place over the key instead of
+        // clamping to the edge and colliding with the suggestion strip.
+        val py = if (r.top - ph - rowGap >= 2 * dp) r.top - ph - rowGap
+            else r.centerY() - ph / 2f
         popupRect.set(px, py, px + pw, py + ph)
         keyPaint.color = theme.popup
         canvas.drawRoundRect(popupRect, corner, corner, keyPaint)
@@ -846,7 +851,10 @@ class KeyboardView @JvmOverloads constructor(
             manualShift = false
             if (holdDeleteSelect) {
                 // Select-on-hold mode: nothing deletes on down — a quick tap
-                // deletes once on release, a hold only highlights.
+                // deletes once on release, hold+drag highlights.
+                delSelecting = false
+                delSelectDownX = x
+                delSelectLastX = x
                 handler.postDelayed(delLongPress, 400)
             } else {
                 listener?.onDelete()
@@ -874,7 +882,25 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     private fun onMove(x: Float, y: Float) {
-        if (pressConsumed) return
+        if (pressConsumed && !delSelecting) return
+        // Hold-Backspace selection drag — like the space-bar cursor swipe but
+        // it highlights text instead of moving the caret.
+        if (delSelecting && pressed?.spec?.code == K.DEL) {
+            val dx = x - delSelectDownX
+            if (delSelectDir == 0 && abs(dx) > delSwipeSlop) {
+                delSelectDir = if (dx > 0) 1 else -1
+            }
+            if (delSelectDir != 0) {
+                val steps = ((x - delSelectLastX) / delStepPx).toInt()
+                if (steps != 0) {
+                    delSelectLastX += steps * delStepPx
+                    val dir = if (steps > 0) 1 else -1
+                    repeat(abs(steps)) { listener?.onSelectMove(dir) }
+                    performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                }
+            }
+            return
+        }
         if (spaceSliding || pressed?.spec?.code == K.SPACE) {
             val dx = x - spaceDownX
             val dy = y - spaceDownY
@@ -906,7 +932,6 @@ class KeyboardView @JvmOverloads constructor(
             downX = x
             downY = y
             handler.removeCallbacks(repeatDelete)
-            handler.removeCallbacks(repeatSelect)
             handler.removeCallbacks(delLongPress)
             handler.removeCallbacks(spaceLongPress)
             handler.removeCallbacks(hintLongPress)
@@ -923,9 +948,15 @@ class KeyboardView @JvmOverloads constructor(
         val p = pressed ?: return
         val wasSliding = spaceSliding
         val wasConsumed = pressConsumed
+        val wasDelSelecting = delSelecting
         val shouldDispatch = !wasSliding && p.spec.code != K.DEL && p.spec.code != K.SPACER &&
             (withinHysteresis(p, x, y) || hit(x, y) === p)
         cancelPress()
+        if (wasDelSelecting) {
+            // Release after hold+drag — delete the highlighted text.
+            listener?.onSelectDelete()
+            return
+        }
         if (holdDeleteSelect && !wasConsumed && p.spec.code == K.DEL &&
             (withinHysteresis(p, x, y) || hit(x, y) === p)) {
             // Quick tap in select-on-hold mode: delete once on release.
@@ -948,8 +979,8 @@ class KeyboardView @JvmOverloads constructor(
         }
         pressed = null
         spaceSliding = false
+        delSelecting = false
         handler.removeCallbacks(repeatDelete)
-        handler.removeCallbacks(repeatSelect)
         handler.removeCallbacks(delLongPress)
         handler.removeCallbacks(spaceLongPress)
         handler.removeCallbacks(hintLongPress)
