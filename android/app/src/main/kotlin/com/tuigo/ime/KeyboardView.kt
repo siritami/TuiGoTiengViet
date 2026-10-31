@@ -125,9 +125,9 @@ class KeyboardView @JvmOverloads constructor(
 
     /** Swipe distance per selected char in drag-select mode — wired from
      *  Prefs.holdDelSensDp (smaller = more sensitive). */
-    var delSelectSensDp = 10
+    var delSelectSensDp = 10f
         set(v) {
-            field = v.coerceIn(2, 30)
+            field = v.coerceIn(0.1f, 15f)
             delStepPx = field * dp
         }
 

@@ -113,7 +113,7 @@ class MainActivity : Activity() {
                 addView(toggle("Khôi phục từ ngoại ngữ", "Giữ nguyên từ không phải tiếng Việt", Prefs.KEY_AUTO_NONVN))
                 addView(toggle("Viết hoa kí tự đầu tiên", "Tự bật Shift ở đầu câu", Prefs.KEY_AUTO_CAPITALIZE))
                 addView(toggle("Hai lần Space → dấu chấm", "Kết thúc câu nhanh", Prefs.KEY_DOUBLE_SPACE))
-                val sensSlider = slider("Độ nhạy kéo chọn", Prefs.KEY_HOLD_DEL_SENS, 2, 30, 10, "dp/ký tự")
+                val sensSlider = slider("Độ nhạy kéo chọn", Prefs.KEY_HOLD_DEL_SENS, 1, 150, 100, "dp/ký tự", tenths = true)
                 addView(choicePicker(
                     "Giữ phím xoá để bôi và xoá",
                     "Tắt: giữ lặp xoá · Kéo: giữ rồi kéo để bôi · Giữ: tự bôi dần sang trái — thả ra để xoá",
@@ -374,8 +374,9 @@ class MainActivity : Activity() {
             pick(selected)
         }
     }
-    private fun slider(title: String, key: String, min: Int, max: Int, default: Int, unit: String = "dp"): View {
+    private fun slider(title: String, key: String, min: Int, max: Int, default: Int, unit: String = "dp", tenths: Boolean = false): View {
         val p = Prefs.get(this)
+        fun fmt(v: Int) = if (tenths) "${v / 10}.${v % 10}" else "$v"
         return ui.column().apply {
             layoutParams = ui.fullWidthLp(topMarginDp = 8)
             val label = ui.text("", 14f)
@@ -387,10 +388,10 @@ class MainActivity : Activity() {
                 setPadding(ui.dp(12), ui.dp(8), ui.dp(12), ui.dp(8))
                 layoutParams = ui.fullWidthLp()
             }
-            label.text = "$title · ${seek.progress + min} $unit"; seek.contentDescription = label.text
+            label.text = "$title · ${fmt(seek.progress + min)} $unit"; seek.contentDescription = label.text
             seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(s: SeekBar?, value: Int, user: Boolean) {
-                    label.text = "$title · ${value + min} $unit"; seek.contentDescription = label.text
+                    label.text = "$title · ${fmt(value + min)} $unit"; seek.contentDescription = label.text
                     if (user) p.edit().putInt(key, value + min).apply()
                 }
                 override fun onStartTrackingTouch(s: SeekBar?) {}

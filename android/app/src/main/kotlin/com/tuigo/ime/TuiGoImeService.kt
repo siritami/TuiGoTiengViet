@@ -105,8 +105,11 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
     private var doubleSpace = true
     /** Fixed end of the hold-Backspace selection (the side that stays put). */
     private var selectAnchor = -1
-    /** Moving edge of the hold-Backspace selection (left side, walks left). */
+    /** Moving edge of the hold-Backspace selection. */
     private var selectEdge = -1
+    /** True between the first onSelectMove and onSelectDelete — async
+     *  setSelection echoes must not tear down the tracking state mid-drag. */
+    private var delSelecting = false
 
     /** Host app's package — per-app VN/EN memory (Windows-style). */
     private var hostPkg: String? = null
@@ -378,6 +381,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
             candidatesStart, candidatesEnd)
         selStart = newSelStart
         selEnd = newSelEnd
+        if (delSelecting) return // echo of our own setSelection — keep tracking
         if (newSelStart != newSelEnd) {
             engine.resetBuf()
             spacePending = false
@@ -541,7 +545,12 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
                 selectEdge = pos
             }
         }
-        selectEdge = (selectEdge + dir).coerceAtLeast(0)
+        delSelecting = true
+        // Clamp to the real text length so a fast swipe can't run the edge
+        // past the document end.
+        val maxPos = (ic.getTextBeforeCursor(100000, 0)?.length ?: 0) +
+            (ic.getTextAfterCursor(100000, 0)?.length ?: 0)
+        selectEdge = (selectEdge + dir).coerceIn(0, maxPos)
         val s = minOf(selectEdge, selectAnchor)
         val e = maxOf(selectEdge, selectAnchor)
         ic.setSelection(s, e)
@@ -554,6 +563,7 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
     override fun onSelectDelete() {
         selectAnchor = -1
         selectEdge = -1
+        delSelecting = false
         onDelete()
     }
 

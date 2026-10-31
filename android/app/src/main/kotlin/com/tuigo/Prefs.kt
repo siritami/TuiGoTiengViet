@@ -138,9 +138,22 @@ object Prefs {
         return if (p.getBoolean(KEY_HOLD_DEL_SELECT, false)) 1 else 0
     }
 
-    /** Drag-to-select sensitivity: dp of swipe per character. Smaller value =
-     *  more sensitive — a short swipe highlights more text. */
-    fun holdDelSensDp(ctx: Context): Int = get(ctx).getInt(KEY_HOLD_DEL_SENS, 10).coerceIn(2, 30)
+    /** Drag-to-select sensitivity: swipe distance per character in tenths of
+     *  a dp (100 = 10.0dp/char). Smaller = more sensitive. Migrates the old
+     *  whole-dp values (2..30) by scaling them x10 once. */
+    fun holdDelSensTenths(ctx: Context): Int {
+        val p = get(ctx)
+        val v = p.getInt(KEY_HOLD_DEL_SENS, 100)
+        if (!p.getBoolean("hold_del_sens_v2", false)) {
+            // Old pref stored whole dp (2..30); new store uses tenths (1..150).
+            val scaled = if (v in 2..30) v * 10 else 100
+            p.edit().putInt(KEY_HOLD_DEL_SENS, scaled)
+                .putBoolean("hold_del_sens_v2", true).apply()
+            return scaled
+        }
+        return v.coerceIn(1, 150)
+    }
+    fun holdDelSensDp(ctx: Context): Float = holdDelSensTenths(ctx) / 10f
     fun haptic(ctx: Context): Boolean = get(ctx).getBoolean(KEY_HAPTIC, true)
     fun keyPopup(ctx: Context): Boolean = get(ctx).getBoolean(KEY_KEY_POPUP, true)
     fun keyGapDp(ctx: Context): Int = get(ctx).getInt(KEY_KEY_GAP, 4)
