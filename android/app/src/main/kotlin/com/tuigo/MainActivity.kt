@@ -116,7 +116,7 @@ class MainActivity : Activity() {
                 addView(choicePicker(
                     "Giữ phím xoá để bôi và xoá",
                     "Tắt: giữ lặp xoá · Kéo: giữ rồi kéo để bôi · Giữ: tự bôi dần sang trái — thả ra để xoá",
-                    Prefs.KEY_HOLD_DEL_MODE, Prefs.holdDelMode(this),
+                    Prefs.KEY_HOLD_DEL_MODE, Prefs.holdDelMode(this@MainActivity),
                     listOf("Tắt", "Kéo để bôi", "Giữ để bôi")))
                 addView(toggle("Rung khi nhấn phím", "Phản hồi rung nhẹ mỗi lần gõ", Prefs.KEY_HAPTIC))
                 addView(toggle("Popup phím khi nhấn", "Hiện bản phóng to phím đang bấm", Prefs.KEY_KEY_POPUP))
