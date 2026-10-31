@@ -748,13 +748,6 @@ class KeyboardView @JvmOverloads constructor(
                 val baseLabel = if (vietnameseOn) "Tiếng Việt" else "English"
                 val spaceLabel = if (spaceSliding) "◀   $baseLabel   ▶" else baseLabel
                 drawCentered(canvas, spaceLabel, r)
-                if (vietnameseOn && !spaceSliding) {
-                    dotPaint.color = t.accent
-                    val labelWidth = textPaint.measureText(spaceLabel)
-                    val dotX = r.centerX() - labelWidth / 2f - 7 * dp
-                    val dotY = r.centerY()
-                    canvas.drawCircle(dotX, dotY, 2.5f * dp, dotPaint)
-                }
             }
             K.DEL -> {
                 cap(if (isPressed) (if (t.pressAccent) t.accent else t.funcPressed) else t.func)
@@ -872,10 +865,11 @@ class KeyboardView @JvmOverloads constructor(
         } ?: run { hideOverlayPopup(); return }
         if (key.spec.code <= 0) { hideOverlayPopup(); return } // only char keys get a popup
         val r = key.rect
-        val pw = r.width() * 1.5f
-        val ph = keyHeight * 1.15f
-        // Float the popup higher above the pressed key (Gboard-style).
-        val lift = rowGap + keyHeight * 0.35f
+        val pw = r.width() * 1.15f
+        val ph = keyHeight * 1.05f
+        // Slight rise above the pressed key — enough to clear the finger
+        // without drifting far from the key.
+        val lift = rowGap + keyHeight * 0.12f
         val py = r.top - ph - lift
         if (py < 0) {
             // Overflows the top edge — paint it into the parent overlay so it
