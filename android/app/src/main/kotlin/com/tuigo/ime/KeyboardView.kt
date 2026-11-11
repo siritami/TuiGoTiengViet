@@ -158,16 +158,10 @@ class KeyboardView @JvmOverloads constructor(
         val glyph: String,
     )
 
-    private val toolbarH = 44 * dp
-    private val toolIconSize = 24 * dp
-    private val toolEdgePad = 12 * dp
     /** Hit rects, rebuilt with the rows (empty while the view has no size). */
     private var toolButtons = emptyList<Pair<ToolButton, RectF>>()
     private var toolPressed: ToolButton? = null
     private var toolPressedAt = 0L
-    private var toolIcon: Bitmap? = null
-    private var toolIconSource: Bitmap? = null
-    private val iconRect = RectF()
 
     /** Toolbar shows on the letter page only — the symbol pages reuse the
      *  four-row grid. */
@@ -468,21 +462,17 @@ class KeyboardView @JvmOverloads constructor(
 
     // ---- metrics ------------------------------------------------------------
 
-        /** True once [relayout] has drawn at least one key — until then touches
-         *  have nothing to hit and are ignored rather than landing on a leftover
-         *  rect from the previous layout. */
-        private val laidOut: Boolean get() = keys.isNotEmpty()
+    /** True once [relayout] has laid out at least one key — until then touches
+     *  have nothing to hit and are ignored rather than landing on a leftover
+     *  rect from the previous layout. */
+    private val laidOut: Boolean get() = keys.isNotEmpty()
 
     private val dp = resources.displayMetrics.density
+    private val toolbarH = 44 * dp
+    private val toolIconSize = 24 * dp
+    private val toolEdgePad = 12 * dp
     private var keyHeight = 56 * dp
     private val rowGap = 6 * dp
-
-    /** Height the view is currently measured to (see [onMeasure]); the rows
-     *  are squeezed to fill it instead of keeping their natural height. */
-    private var measuredH = 0
-    /** Rows were rebuilt before the view had a size; the next measure pass
-     *  lays them out again. */
-    private var rowsNeedLayout = false
     private var keyGap = 4 * dp
     /** Horizontal gap between the left/right halves in landscape split mode. */
     private var splitGap = 40 * dp
@@ -490,6 +480,13 @@ class KeyboardView @JvmOverloads constructor(
     private val padTop = 8 * dp
     private val padBottom = 8 * dp
     private var corner = 10 * dp
+
+    /** Height the view is currently measured to (see [onMeasure]); the rows
+     *  are squeezed to fill it instead of keeping their natural height. */
+    private var measuredH = 0
+    /** Rows were rebuilt before the view had a size; the next measure pass
+     *  lays them out again. */
+    private var rowsNeedLayout = false
 
     // ---- paint --------------------------------------------------------------
 
@@ -1389,6 +1386,7 @@ class KeyboardView @JvmOverloads constructor(
 
     private fun onUp(x: Float, y: Float) {
         val p = pressed ?: return
+        val wasSliding = spaceSliding
         val wasConsumed = pressConsumed
         val wasDelSelecting = delSelecting
         val shouldDispatch = !wasSliding && p.spec.code != K.DEL && p.spec.code != K.SPACER &&
