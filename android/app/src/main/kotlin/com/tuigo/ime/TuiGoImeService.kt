@@ -226,6 +226,10 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
     override fun onCreateInputView(): View {
         keyboard = KeyboardView(this)
         keyboard.listener = this
+        keyboard.onSettings = {
+            startActivity(Intent(this, com.tuigo.MainActivity::class.java))
+        }
+        keyboard.settingsIcon = toolbarLauncherIcon()
         keyboard.theme = KeyboardThemes.current(this)
         keyboard.vietnameseOn = vietOn
         keyboard.vniMode = Prefs.inputMethod(this) == ImVni
@@ -704,6 +708,22 @@ class TuiGoImeService : InputMethodService(), KeyboardView.Listener {
 
     override fun onSwitchIme() {
         getSystemService(InputMethodManager::class.java)?.showInputMethodPicker()
+    }
+
+    /** The app launcher icon, drawn into the keyboard toolbar's settings
+     *  button at toolbar size. */
+    private fun toolbarLauncherIcon(): android.graphics.Bitmap? {
+        val size = (24 * resources.displayMetrics.density).toInt().coerceAtLeast(1)
+        return try {
+            val drawable = packageManager.getApplicationIcon(packageName)
+            android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888).also { bmp ->
+                val canvas = Canvas(bmp)
+                drawable.setBounds(0, 0, size, size)
+                drawable.draw(canvas)
+            }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     // ---- inline autofill & clipboard suggestion strip --------------------------

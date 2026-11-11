@@ -6,6 +6,7 @@ import android.content.res.Configuration
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
+import android.graphics.Bitmap
 import android.graphics.Typeface
 import android.graphics.LinearGradient
 import android.graphics.Shader
@@ -90,10 +91,13 @@ class KeyboardView @JvmOverloads constructor(
     /** Back to the letter page — called when the keyboard opens so a new
      *  field never starts on the symbols page. */
     fun resetPage() {
+        if (!symbolsPage) return
         symbolsPage = false
         symbolLevel = 0
         rows = currentRows()
         relayout()
+        measuredH = 0
+        requestLayout()
     }
 
     /** Edge swipe down packs all keys to one side for one-handed typing.
@@ -102,6 +106,7 @@ class KeyboardView @JvmOverloads constructor(
         set(v) {
             field = v
             if (!v) oneHandedSide = 0
+            syncToolbarSide()
             relayout()
             invalidate()
         }
@@ -110,9 +115,11 @@ class KeyboardView @JvmOverloads constructor(
     var oneHandedSide = 0
         private set
 
-    /** Which half of the rows actually holds keys. While the keyboard is being
-     *  rebuilt (`keys` empty) an edge swiped down must not leave the toolbar
-     *  side unclear: with nothing drawn, the packed side is the typed side. */
+    /** Which half of the rows actually holds keys. The edge-swipe gesture must
+     *  measure against the drawn span, not the view width: after an app switch
+     *  the rows can be laid out for a narrower width, and a stale window width
+     *  turned every touch into an edge swipe. With nothing drawn, the packed
+     *  side is the one the next tap would land on. */
     private fun activeSide(x: Float): Int {
         if (keys.isEmpty()) return -1
         var left = Float.MAX_VALUE
@@ -125,6 +132,58 @@ class KeyboardView @JvmOverloads constructor(
         if (left == Float.MAX_VALUE || right <= left) return 0
         return if (x < (left + right) / 2f) -1 else 1
     }
+
+    /** Toolbar above the keyboard. The letter page gets one settings button
+     *  (Gboard's tab / TuiGo's own settings); Android can't host an emoji
+     *  picker, so no emoji key is offered — the iOS keyboard draws it on the
+     *  symbol pages instead. */
+    enum class ToolbarSide { LEFT, RIGHT }
+
+    /** Where the single toolbar button sits; follows one-handed packing. */
+    var toolbarSide = ToolbarSide.LEFT
+
+    /** Gboard keeps its tab on the side the keys are packed to, so a one
+     *  thumb can reach settings too. Mirrored, not moved, so the button stays
+     *  on the outer edge. */
+    private fun syncToolbarSide() {
+        toolbarSide = if (oneHandedSide > 0) ToolbarSide.RIGHT else ToolbarSide.LEFT
+    }
+
+    var onSettings: (() -> Unit)? = null
+    var settingsIcon: Bitmap? = null
+
+    private data class ToolButton(
+        val action: () -> Unit,
+        val icon: Bitmap?,
+        val glyph: String,
+    )
+
+    private val toolbarH = 44 * dp
+    private val toolIconSize = 24 * dp
+    private val toolEdgePad = 12 * dp
+    /** Hit rects, rebuilt with the rows (empty while the view has no size). */
+    private var toolButtons = emptyList<Pair<ToolButton, RectF>>()
+    private var toolPressed: ToolButton? = null
+    private var toolPressedAt = 0L
+    private var toolIcon: Bitmap? = null
+    private var toolIconSource: Bitmap? = null
+    private val iconRect = RectF()
+
+    /** Toolbar shows on the letter page only — the symbol pages reuse the
+     *  four-row grid. */
+    private fun toolbarVisible(): Boolean = !symbolsPage
+
+    private fun buildToolButtons(): List<Pair<ToolButton, RectF>> {
+        if (!toolbarVisible()) return emptyList()
+        val touch = (toolIconSize + 16 * dp) / 2
+        val cy = toolbarH / 2
+        val cx = if (toolbarSide == ToolbarSide.LEFT) toolEdgePad + toolIconSize / 2
+        else width - toolEdgePad - toolIconSize / 2
+        return toolbarTools().map { tool -> tool to RectF(cx - touch, cy - touch, cx + touch, cy + touch) }
+    }
+
+    private fun toolbarTools(): List<ToolButton> =
+        listOf(ToolButton({ onSettings?.invoke() }, settingsIcon, "⚙"))
 
     /** Split the letter rows into left/right halves in landscape. */
     var landscapeSplit = true
@@ -203,11 +262,13 @@ class KeyboardView @JvmOverloads constructor(
     // ---- layout model ------------------------------------------------------
 
     private object K {
+        const val DIGIT_DIAL = -12
         const val NUM_SPACE = -11
         const val MORE = -10
         const val IME = -9
         const val HIDE = -8
         const val SPACER = -7
+        const val EMOJI = -6
         const val SPACE = -5
         const val ENTER = -4
         const val MODE = -3
@@ -221,6 +282,9 @@ class KeyboardView @JvmOverloads constructor(
         val weight: Float = 1f,
         val hint: String = "",
         val longPressChar: Char? = hint.firstOrNull(),
+        /** Draw [label] with the tiny function-key font instead of the letter
+         *  font — `=\<` on the symbol page reads as a function key. */
+        val smallLabel: Boolean = false,
     )
 
     private class Key(val spec: KeySpec, val rect: RectF = RectF())
@@ -262,14 +326,32 @@ class KeyboardView @JvmOverloads constructor(
         } else keys.toTypedArray()
     }
 
-    /** Bottom row shared by every page. */
-    private fun bottomRow(modeLabel: String): Array<KeySpec> = arrayOf(
-        KeySpec(K.MODE, modeLabel, 1.7f),
-        KeySpec(','.code, ",", 1.1f),
-        KeySpec(K.SPACE, "Tiếng Việt", 5.7f),
-        KeySpec('.'.code, ".", 1.1f),
+    /** Bottom row of the letter page: the dial opens the symbol page and iOS
+     *  leaves the slot between it and `?123` empty. */
+    private val letterBottom: Array<KeySpec> = arrayOf(
+        KeySpec(K.DIGIT_DIAL, "", 0.7f),
+        KeySpec(K.MODE, "?123", 1.7f),
+        KeySpec(K.SPACE, "Tiếng Việt", 7.2f),
         KeySpec(K.ENTER, "⏎", 1.5f),
     )
+
+    /** Bottom row shared by the symbol pages. iOS puts the emoji key between
+     *  Space and Return; a third-party IME cannot open the system emoji picker,
+     *  so that slot opens the input-method picker instead and `12/34` switches
+     *  to the numeric keypad. */
+    private val symbolBottom: Array<KeySpec> = arrayOf(
+        KeySpec(K.MODE, "ABC", 1.7f),
+        KeySpec(','.code, ",", 1.1f),
+        KeySpec(K.NUM_SPACE, "12\n34", 1.15f),
+        KeySpec(K.SPACE, "Tiếng Việt", 5.0f),
+        KeySpec(K.EMOJI, "", 1.1f),
+        KeySpec(K.ENTER, "⏎", 1.5f),
+    )
+
+    /** Symbol page, first row: leading function key on the left, Backspace on
+     *  the right, eight symbol keys between them. */
+    private fun symbolTopRow(first: KeySpec, keys: String): Array<KeySpec> =
+        arrayOf(first, *row(keys), KeySpec(K.DEL, "⌫", 1.5f))
 
     private fun buildLettersRows(): Array<Array<KeySpec>> = arrayOf(
         row("qwertyuiop", withLetterHints = true),
@@ -279,34 +361,27 @@ class KeyboardView @JvmOverloads constructor(
             *row("zxcvbnm", withLetterHints = true),
             KeySpec(K.DEL, "⌫", 1.5f),
         ),
-        bottomRow("?123"),
+        letterBottom,
     )
 
     private val symbolsRows: Array<Array<KeySpec>> by lazy {
         arrayOf(
             row("1234567890"),
             row("@#₫_&-+()/"),
-            arrayOf(
-                KeySpec(K.MORE, "#+=", 1.5f),
-                *row("*\"':;!?"),
-                KeySpec(K.DEL, "⌫", 1.5f),
-            ),
+            symbolTopRow(KeySpec(K.MORE, "=\\<", 1.5f, smallLabel = true), "*\"':;!?"),
+            symbolBottom,
         )
     }
 
-    private val legacySymbolRows: Array<Array<KeySpec>> by lazy {
-        arrayOf(
-            row("^~`|\\€£¥%$"),
-            row("°={}[]<>_₫"),
-            arrayOf(KeySpec(K.MORE, "?123", 1.5f), *row("!?'\":;"), KeySpec(K.DEL, "⌫", 1.5f)),
-        )
-    }
-
+    /** Second symbols page (`=\<`). Rows 1–2 carry the iOS page that follows
+     *  the first `=\<` tap; rows 3–4 reuse the first page's keys. Characters
+     *  commit literally — the engine passes non-letters through. */
     private val extraSymbolRows: Array<Array<KeySpec>> by lazy {
         arrayOf(
             row("~`|•√π÷×§Δ"),
             row("£€$¢^°={}\\"),
-            arrayOf(KeySpec(K.MORE, "¥<>", 1.5f), *row("%©®™✓[]"), KeySpec(K.DEL, "⌫", 1.5f)),
+            symbolTopRow(KeySpec(K.MODE, "?123", 1.5f), "%©®™✓[]"),
+            symbolBottom,
         )
     }
 
@@ -324,6 +399,7 @@ class KeyboardView @JvmOverloads constructor(
             else -> ",0."
         }
         return arrayOf(
+            row("1234567890"),
             arrayOf(*row("123"), if (phone) KeySpec('+'.code, "+") else KeySpec('-'.code, "-")),
             arrayOf(*row("456"), if (phone) KeySpec('-'.code, "-") else KeySpec(K.NUM_SPACE, "␣")),
             arrayOf(*row("789"), KeySpec(K.DEL, "⌫")),
@@ -332,10 +408,12 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     private fun currentRows(): Array<Array<KeySpec>> =
-        if (numericLayout != NumericLayout.NONE) numPadRows(numericLayout)
-        else if (symbolsPage) arrayOf(*when (symbolLevel) { 1 -> extraSymbolRows; 2 -> legacySymbolRows; else -> symbolsRows }, bottomRow("ABC"))
-        else if (showNumberRow) arrayOf(buildNumberRow(), *buildLettersRows())
-        else buildLettersRows()
+        when {
+            numericLayout != NumericLayout.NONE -> numPadRows(numericLayout)
+            symbolsPage -> arrayOf(*(if (symbolLevel == 1) extraSymbolRows else symbolsRows), symbolBottom)
+            showNumberRow -> arrayOf(buildNumberRow(), *buildLettersRows())
+            else -> buildLettersRows()
+        }
 
     private val keys = mutableListOf<Key>()
     private var rows: Array<Array<KeySpec>> = buildLettersRows()
@@ -402,12 +480,8 @@ class KeyboardView @JvmOverloads constructor(
     /** Height the view is currently measured to (see [onMeasure]); the rows
      *  are squeezed to fill it instead of keeping their natural height. */
     private var measuredH = 0
-    /** Padding baked into [keys] by the last [relayout]. */
-    private var laidOutPadTop = 0f
-    private var laidOutPadBottom = 0f
-    private var laidOutRowGap = 0f
-    /** Rows were rebuilt before the view had a size (the framework returns a
-     *  layout request before the first pass) — lay them out on the next pass. */
+    /** Rows were rebuilt before the view had a size; the next measure pass
+     *  lays them out again. */
     private var rowsNeedLayout = false
     private var keyGap = 4 * dp
     /** Horizontal gap between the left/right halves in landscape split mode. */
@@ -452,6 +526,7 @@ class KeyboardView @JvmOverloads constructor(
     private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val shadowRect = RectF()
     private val popupRect = RectF()
+    private val dialRect = RectF()
 
     private var pressed: Key? = null
     /** One-handed edge swipe: -1 started on left edge, +1 right, 0 none. */
@@ -666,8 +741,13 @@ class KeyboardView @JvmOverloads constructor(
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val w = MeasureSpec.getSize(widthMeasureSpec)
+        if (rowsNeedLayout) {
+            rowsNeedLayout = false
+            requestLayout()
+        }
         val n = rows.size
-        val h = (padTop + maxOf(padBottom, navInset.toFloat()) +
+        val toolbar = if (toolbarVisible()) toolbarH else 0f
+        val h = (toolbar + padTop + maxOf(padBottom, navInset.toFloat()) +
             n * keyHeight + (n - 1) * rowGap).roundToInt()
         measuredH = h
         setMeasuredDimension(w, h)
@@ -677,6 +757,7 @@ class KeyboardView @JvmOverloads constructor(
         relayout()
     }
 
+
     private fun relayout() {
         keys.clear()
         val visualRows = computeVisualRows()
@@ -685,6 +766,7 @@ class KeyboardView @JvmOverloads constructor(
             return
         }
         rowsNeedLayout = false
+        toolButtons = buildToolButtons()
         // One-handed mode packs keys into 78% of the width on the chosen side.
         val contentW = (width - 2 * padH) * (if (oneHandedSide != 0) 0.78f else 1f)
         val contentX = padH + when {
@@ -699,6 +781,7 @@ class KeyboardView @JvmOverloads constructor(
         // then the gaps, then the keys so every row stays inside the view and
         // hit-testing matches what is drawn.
         val n = visualRows.size
+        val toolbarUsed = if (toolbarVisible()) toolbarH else 0f
         var padTopUsed = padTop
         var padBottomUsed = maxOf(padBottom, navInset.toFloat())
         var gapUsed = rowGap
@@ -709,21 +792,21 @@ class KeyboardView @JvmOverloads constructor(
                 height > 0 -> height.toFloat()
                 else -> Float.MAX_VALUE
             }
-            val natural = padTopUsed + padBottomUsed + n * kh + (n - 1) * gapUsed
+            val natural = toolbarUsed + padTopUsed + padBottomUsed + n * kh + (n - 1) * gapUsed
             if (natural > avail + 0.5f) {
-                val header = (padTopUsed + padBottomUsed).coerceAtMost(avail * 0.2f)
+                val body = (avail - toolbarUsed).coerceAtLeast(avail * 0.5f)
+                var header = (padTopUsed + padBottomUsed).coerceAtMost(avail * 0.2f)
+                if (header > body) header = body
                 val gaps = (n - 1) * gapUsed
-                val scale = ((avail - header) / (n * kh + gaps)).coerceAtLeast(0.1f)
+                val scale = ((body - header) / (n * kh + gaps)).coerceAtLeast(0.1f)
                 kh *= scale
                 gapUsed *= scale
-                padTopUsed = padTop * (header / (padTopUsed + padBottomUsed))
+                val padding = padTopUsed + padBottomUsed
+                padTopUsed = if (padding > 0f) padTop * (header / padding) else 0f
                 padBottomUsed = header - padTopUsed
             }
         }
-        laidOutPadTop = padTopUsed
-        laidOutPadBottom = padBottomUsed
-        laidOutRowGap = gapUsed
-        var y = padTopUsed
+        var y = toolbarUsed + padTopUsed
         for (halves in visualRows) {
             val halfW = if (halves.size > 1) (contentW - splitGap) / 2f else contentW
             for (half in halves.indices) {
@@ -740,7 +823,6 @@ class KeyboardView @JvmOverloads constructor(
             y += kh + gapUsed
         }
         bgPaint.shader = LinearGradient(0f, 0f, 0f, height.toFloat().coerceAtLeast(1f), theme.bg, theme.bgEnd, Shader.TileMode.CLAMP)
-        if (rowsNeedLayout) post { relayout() }
         invalidate()
     }
 
@@ -748,8 +830,39 @@ class KeyboardView @JvmOverloads constructor(
 
     override fun onDraw(canvas: Canvas) {
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bgPaint)
+        drawToolbar(canvas)
         for (key in keys) drawKey(canvas, key)
         drawPreview(canvas)
+    }
+
+    private var toolIcon: Bitmap? = null
+    private var toolIconSource: Bitmap? = null
+    private val iconRect = RectF()
+
+    /** Toolbar glyphs are drawn, not text keys: no key cap, no press fill. */
+    private fun drawToolbar(canvas: Canvas) {
+        if (toolButtons.isEmpty()) return
+        if (settingsIcon !== toolIconSource) {
+            toolIconSource = settingsIcon
+            val px = toolIconSize.roundToInt().coerceAtLeast(1)
+            toolIcon = settingsIcon?.let { Bitmap.createScaledBitmap(it, px, px, true) }
+        }
+        for ((tool, r) in toolButtons) {
+            val cx = r.centerX()
+            val cy = r.centerY()
+            val icon = toolIcon
+            if (icon != null) {
+                val half = icon.width / 2f
+                iconRect.set(cx - half, cy - half, cx + half, cy + half)
+                canvas.drawBitmap(icon, null, iconRect, keyPaint)
+            } else {
+                textPaint.color = theme.funcText
+                textPaint.textSize = 20 * dp
+                textPaint.alpha = 0xDD
+                drawCentered(canvas, tool.glyph, r)
+                textPaint.alpha = 0xFF
+            }
+        }
     }
 
     private fun drawKey(canvas: Canvas, key: Key) {
@@ -821,23 +934,63 @@ class KeyboardView @JvmOverloads constructor(
                 textPaint.textSize = 13 * dp
                 val baseLabel = if (vietnameseOn) "Tiếng Việt" else "English"
                 val spaceLabel = if (spaceSliding) "◀   $baseLabel   ▶" else baseLabel
-                drawCentered(canvas, spaceLabel, r)
+                if (symbolsPage) {
+                    // Symbol pages carry a narrow Space — keep the label small
+                    // enough to stay inside the cap.
+                    textPaint.textSize = 11 * dp
+                    drawCentered(canvas, if (spaceSliding) "◀ $baseLabel ▶" else baseLabel, r)
+                } else {
+                    drawCentered(canvas, spaceLabel, r)
+                }
             }
             K.DEL -> {
                 cap(if (isPressed) (if (t.pressAccent) t.accent else t.funcPressed) else t.func)
                 iconPaint.color = if (isPressed) pressedGlyph(t.funcText) else t.funcText
                 drawDeleteIcon(canvas, r)
             }
-            K.MODE, K.MORE, K.NUM_SPACE -> {
+            K.MODE, K.MORE -> {
                 cap(if (isPressed) (if (t.pressAccent) t.accent else t.funcPressed) else t.func)
                 textPaint.color = if (isPressed) pressedGlyph(t.funcText) else t.funcText
-                textPaint.textSize = if (spec.code == K.NUM_SPACE) 19 * dp else 14 * dp
+                textPaint.textSize = 14 * dp
                 drawCentered(canvas, spec.label, r)
+            }
+            K.NUM_SPACE -> {
+                cap(if (isPressed) (if (t.pressAccent) t.accent else t.funcPressed) else t.func)
+                textPaint.color = if (isPressed) pressedGlyph(t.funcText) else t.funcText
+                textPaint.textSize = 12 * dp
+                // Two-line "12/34", stacked like iOS's numeric key.
+                val lines = spec.label.split('\n')
+                val step = textPaint.textSize + 1 * dp
+                val first = r.centerY() - step / 2 - (textPaint.descent() + textPaint.ascent()) / 2
+                lines.forEachIndexed { i, line ->
+                    canvas.drawText(line, r.centerX(), first + i * step, textPaint)
+                }
+            }
+            K.DIGIT_DIAL -> {
+                // Circular key with an iOS-style dial of tiny squares.
+                val d = minOf(r.height(), 56 * dp)
+                dialRect.set(r.centerX() - d / 2, r.centerY() - d / 2, r.centerX() + d / 2, r.centerY() + d / 2)
+                keyPaint.color = if (isPressed && !t.pressAccent) t.funcPressed else t.func
+                canvas.drawRoundRect(dialRect, d / 2, d / 2, keyPaint)
+                dotPaint.color = t.funcText
+                val cell = 1.7f * dp
+                val step = 4.4f * dp
+                for (dy in -1..1) for (dx in -1..1) {
+                    val x = r.centerX() + dx * step
+                    val y = r.centerY() + dy * step
+                    canvas.drawRoundRect(x - cell / 2, y - cell / 2, x + cell / 2, y + cell / 2, 0.6f * dp, 0.6f * dp, dotPaint)
+                }
+            }
+            K.EMOJI -> {
+                cap(if (isPressed) (if (t.pressAccent) t.accent else t.funcPressed) else t.func)
+                textPaint.color = if (isPressed) pressedGlyph(t.funcText) else t.funcText
+                textPaint.textSize = 19 * dp
+                drawCentered(canvas, "🌐", r)
             }
             else -> {
                 cap(if (isPressed) (if (t.pressAccent) t.accent else t.keyPressed) else t.key)
                 textPaint.color = if (isPressed) pressedGlyph(t.text) else t.text
-                textPaint.textSize = 21 * dp
+                textPaint.textSize = if (spec.smallLabel) 14 * dp else 21 * dp
                 drawCentered(canvas, currentLabel(spec), r)
                 if (spec.hint.isNotEmpty()) {
                     textPaint.textSize = 10.5f * dp
@@ -982,7 +1135,18 @@ class KeyboardView @JvmOverloads constructor(
                 // Touches that arrive before the rows exist (first show, or a
                 // rebuild mid-gesture) have nothing valid to hit — drop them
                 // instead of pressing a stale rect.
-                if (laidOut) onDown(ev.x, ev.y)
+                if (!laidOut) return true
+                // The toolbar is above the keys, so it gets first claim; its
+                // hit boxes never overlap a key rect.
+                val tool = toolButtons.firstOrNull { it.second.contains(ev.x, ev.y) }?.first
+                if (tool != null) {
+                    toolPressed = tool
+                    toolPressedAt = SystemClock.uptimeMillis()
+                    performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    invalidate()
+                } else {
+                    onDown(ev.x, ev.y)
+                }
             }
             MotionEvent.ACTION_POINTER_DOWN -> {
                 val idx = ev.actionIndex
@@ -1013,14 +1177,31 @@ class KeyboardView @JvmOverloads constructor(
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
                 val idx = ev.actionIndex
                 if (idx >= 0 && ev.getPointerId(idx) == downPointerId) {
-                    onUp(ev.getX(idx), ev.getY(idx))
+                    if (toolPressed != null) onToolUp(ev.getX(idx), ev.getY(idx))
+                    else onUp(ev.getX(idx), ev.getY(idx))
                     downPointerId = -1
                     edgeSwipeSide = 0
                 }
             }
-            MotionEvent.ACTION_CANCEL -> { edgeSwipeSide = 0; cancelPress() }
+            MotionEvent.ACTION_CANCEL -> {
+                edgeSwipeSide = 0
+                cancelPress()
+                val tool = toolPressed
+                toolPressed = null
+                if (tool != null) invalidate()
+            }
         }
         return true
+    }
+
+    /** Toolbar buttons act like plain buttons: fire on release when the finger
+     *  is still on the button, drop it on a drag off. */
+    private fun onToolUp(x: Float, y: Float) {
+        val tool = toolPressed ?: return
+        toolPressed = null
+        val inside = toolButtons.firstOrNull { it.first === tool }?.second?.contains(x, y) == true
+        if (inside) tool.action()
+        invalidate()
     }
 
     /** Which side an edge-swipe starting at x belongs to: left/right edge
@@ -1039,6 +1220,7 @@ class KeyboardView @JvmOverloads constructor(
 
     private fun toggleOneHanded(side: Int) {
         oneHandedSide = if (oneHandedSide == side) 0 else side
+        syncToolbarSide()
         performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
         relayout()
         invalidate()
@@ -1086,7 +1268,25 @@ class KeyboardView @JvmOverloads constructor(
             y >= r.top - keyHysteresis && y <= r.bottom + keyHysteresis
     }
 
+    /** Cancels a press that has drifted off its key but is still inside the
+     *  hysteresis band. Without this, a tap on the toolbar above the top row
+     *  could still press the key the finger started on. */
+    private fun releaseStalePress(x: Float, y: Float) {
+        val p = pressed ?: return
+        if (withinHysteresis(p, x, y)) return
+        if (hit(x, y) === p) return
+        cancelPress()
+    }
+
     private fun onMove(x: Float, y: Float) {
+        if (toolPressed != null) {
+            if (toolButtons.none { it.first === toolPressed && it.second.contains(x, y) }) {
+                toolPressed = null
+                invalidate()
+            }
+            return
+        }
+        releaseStalePress(x, y)
         // One-handed edge swipe: downward pull from a side edge packs the keys
         // to that side (or exits when swiping the same side again).
         if (edgeSwipeSide != 0) {
@@ -1189,7 +1389,6 @@ class KeyboardView @JvmOverloads constructor(
 
     private fun onUp(x: Float, y: Float) {
         val p = pressed ?: return
-        val wasSliding = spaceSliding
         val wasConsumed = pressConsumed
         val wasDelSelecting = delSelecting
         val shouldDispatch = !wasSliding && p.spec.code != K.DEL && p.spec.code != K.SPACER &&
@@ -1281,19 +1480,14 @@ class KeyboardView @JvmOverloads constructor(
                 listener?.onShiftChanged(shifted, capsLock)
             }
             K.DEL, K.SPACER -> {} // delete fires on down/repeat
+            K.DIGIT_DIAL -> setSymbolPage(true)
             K.MODE -> {
-                val previousCount = rows.size
-                symbolsPage = !symbolsPage
-                symbolLevel = 0
-                rows = currentRows()
-                relayout()
-                if (previousCount != rows.size) requestLayout()
+                // On the second symbols page the same key is labelled `?123`
+                // and steps back to the main symbol page instead of leaving.
+                if (symbolsPage && symbolLevel == 1) showSymbolLevel(0) else setSymbolPage(!symbolsPage)
             }
-            K.MORE -> {
-                symbolLevel = (symbolLevel + 1) % 3
-                rows = currentRows()
-                relayout()
-            }
+            K.MORE -> showSymbolLevel(1)
+            K.EMOJI -> listener?.onSwitchIme()
             K.ENTER -> {
                 manualShift = false
                 listener?.onEnter()
@@ -1313,6 +1507,34 @@ class KeyboardView @JvmOverloads constructor(
                 }
             }
         }
+        invalidate()
+    }
+
+    /** Grid size for `rows`, including the toolbar row when it is shown. The
+     *  numeric keypad is five rows and has no toolbar, so callers cannot just
+     *  count `rows.size`. */
+    private fun pageRowCount(): Int = rows.size + (if (toolbarVisible()) 1 else 0)
+
+    private fun setSymbolPage(on: Boolean) {
+        if (symbolsPage == on) return
+        val previousCount = pageRowCount()
+        symbolsPage = on
+        symbolLevel = 0
+        rows = currentRows()
+        relayout()
+        if (previousCount != pageRowCount()) {
+            measuredH = 0
+            requestLayout()
+        }
+    }
+
+    /** Row 1 is the `?123` page, row 2 the `=\<` page — same grid, so only
+     *  the keys need a new layout. */
+    private fun showSymbolLevel(level: Int) {
+        if (!symbolsPage || symbolLevel == level) return
+        symbolLevel = level
+        rows = currentRows()
+        relayout()
         invalidate()
     }
 
